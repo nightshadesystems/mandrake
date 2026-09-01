@@ -1,0 +1,6 @@
+[toolchain]
+channel = "stable"
+components = ["rustfmt", "clippy"]
+# Appliance target. Host-native builds are used for lint and unit tests;
+# illumos-only integration tests are gated on cfg(target_os = "illumos").
+targets = ["x86_64-unknown-illumos"]

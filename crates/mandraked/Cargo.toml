@@ -1,0 +1,20 @@
+[package]
+name = "mandraked"
+description = "Mandrake host management daemon: API server, auth, audit, embedded console"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "mandraked"
+path = "src/main.rs"
+
+[dependencies]
+
+[lints]
+workspace = true

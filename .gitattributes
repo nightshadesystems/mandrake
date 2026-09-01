@@ -1,0 +1,13 @@
+# Normalise everything to LF in the repo and on checkout. Build scripts,
+# justfile recipes, and SMF manifests run on illumos and must never be CRLF.
+* text=auto eol=lf
+
+# Binary build products and captured images
+*.iso binary
+*.usb binary
+*.img binary
+*.png binary
+*.woff2 binary
+
+# Captured illumos output is verbatim; never re-normalise it
+crates/*/testdata/*.txt -text

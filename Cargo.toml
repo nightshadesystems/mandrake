@@ -1,0 +1,58 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/mandraked",
+    "crates/mandrakectl",
+    "crates/mandrake-core",
+    "crates/mandrake-zones",
+    "crates/mandrake-bhyve",
+    "crates/mandrake-net",
+    "crates/mandrake-zfs",
+    "crates/mandrake-images",
+    "crates/mandrake-smf",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT"
+authors = ["Nightshade Systems"]
+repository = "https://github.com/nightshadesystems/mandrake"
+homepage = "https://nightshade.systems"
+publish = false
+
+[workspace.dependencies]
+# Internal crates
+mandrake-core = { path = "crates/mandrake-core" }
+mandrake-zones = { path = "crates/mandrake-zones" }
+mandrake-bhyve = { path = "crates/mandrake-bhyve" }
+mandrake-net = { path = "crates/mandrake-net" }
+mandrake-zfs = { path = "crates/mandrake-zfs" }
+mandrake-images = { path = "crates/mandrake-images" }
+mandrake-smf = { path = "crates/mandrake-smf" }
+
+# Sanctioned external set (spec §14). Anything else needs sign-off first.
+thiserror = "2"
+tracing = "0.1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "process", "sync", "time"] }
+axum = { version = "0.8", features = ["ws", "macros"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+rust-embed = "8"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+rust_2018_idioms = { level = "warn", priority = -1 }
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+module_name_repetitions = "allow"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

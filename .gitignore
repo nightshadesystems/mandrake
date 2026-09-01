@@ -1,0 +1,25 @@
+# Rust
+/target/
+**/*.rs.bk
+
+# Node / console
+node_modules/
+console/dist/
+*.tsbuildinfo
+
+# Build products (Phase 1+)
+/build/out/
+*.iso
+*.usb
+*.img
+
+# Editors / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Local env
+.env
+.env.*

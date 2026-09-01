@@ -1,0 +1,20 @@
+[package]
+name = "mandrakectl"
+description = "Thin JSON-first CLI over the Mandrake API"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "mandrakectl"
+path = "src/main.rs"
+
+[dependencies]
+
+[lints]
+workspace = true

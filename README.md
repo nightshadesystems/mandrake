@@ -40,6 +40,23 @@ just lint            # fmt check, clippy pedantic, eslint, prettier
 
 Media and package targets run on an OmniOS build host. See `docs/build.md`.
 
+## Managing a host
+
+`mandrakectl` is a thin client over the same API the console uses. As root
+on the host it talks to the daemon over its Unix socket with no credentials,
+which is how the first admin is created after install:
+
+```sh
+pfexec mandrakectl users create admin --role admin --password-stdin
+pfexec mandrakectl tokens create laptop --user <admin id>
+```
+
+From anywhere else, pass `--server https://host` with `--token` (or
+`MANDRAKE_TOKEN`, or `~/.config/mandrake/token`) and trust the appliance's
+self-signed certificate with `--fingerprint <sha256 printed at boot>`. Output
+is JSON whenever stdout is not a terminal; `--json` forces it. See
+`mandrakectl --help`.
+
 ## Upstream
 
 Mandrake consumes the OmniOS CE kernel and core packages unmodified and layers

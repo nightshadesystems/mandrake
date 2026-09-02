@@ -35,7 +35,7 @@ mandrake-smf = { path = "crates/mandrake-smf" }
 # Sanctioned external set (spec §14).
 thiserror = "2"
 tracing = "0.1"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "process", "sync", "time", "net"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "process", "sync", "time", "net", "fs"] }
 axum = { version = "0.8", features = ["ws", "macros"] }
 # No `bundled` here: mandraked links the OmniOS libsqlite3 on illumos and
 # enables `bundled` for other targets itself (ADR-0009).

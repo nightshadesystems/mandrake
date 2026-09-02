@@ -84,7 +84,9 @@ check-illumos:
         fi
         case "$(uname -s)" in MINGW* | MSYS* | CYGWIN*) sysroot=$(cygpath -m "$sysroot") ;; esac
         export CC_x86_64_unknown_illumos="clang --target=x86_64-unknown-illumos --sysroot=$sysroot"
-        export AR_x86_64_unknown_illumos=llvm-ar
+        # GNU ar archives illumos ELF objects fine when llvm-ar is not installed.
+        ar=$(command -v llvm-ar || command -v ar) || { echo "check-illumos: no ar found" >&2; exit 1; }
+        export AR_x86_64_unknown_illumos="$ar"
     fi
     cargo check --workspace --all-targets --target {{illumos_target}}
 

@@ -21,7 +21,9 @@
 # and the Rust CI note says to re-verify TLS when changing it. Building it
 # needs a host GCC of about the same era (Ubuntu 20.04's 9.x works); the
 # build workflow runs this in such a container. Needs: build-essential,
-# curl, xz-utils, bzip2, libgmp-dev, libmpfr-dev, libmpc-dev.
+# curl, xz-utils, bzip2, libgmp-dev, libmpfr-dev, libmpc-dev, texinfo, file.
+# Documentation is skipped (MAKEINFO=true) so a missing makeinfo cannot
+# fail the build either way.
 
 set -euo pipefail
 
@@ -87,8 +89,8 @@ do_binutils() {
             --program-prefix="$program_prefix" \
             --with-sysroot="$sysroot_dir" \
             --disable-werror >configure.log
-        make -j "$jobs" >make.log 2>&1 || { tail -50 make.log; die "binutils build failed"; }
-        make install >install.log
+        make -j "$jobs" MAKEINFO=true >make.log 2>&1 || { tail -50 make.log; die "binutils build failed"; }
+        make install MAKEINFO=true >install.log
     )
     rm -rf "$work/build/binutils" "$work/src/binutils-$binutils_version"
 }
@@ -125,8 +127,8 @@ do_gcc() {
             --disable-werror \
             --enable-languages=c,c++ \
             --enable-tls >configure.log
-        make -j "$jobs" >make.log 2>&1 || { tail -80 make.log; die "gcc build failed"; }
-        make install >install.log
+        make -j "$jobs" MAKEINFO=true >make.log 2>&1 || { tail -80 make.log; die "gcc build failed"; }
+        make install MAKEINFO=true >install.log
     )
     rm -rf "$work/build/gcc" "$work/src/gcc-$gcc_version"
 }

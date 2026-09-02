@@ -64,8 +64,27 @@ lint-sh:
 test:
     cargo test --workspace
 
-# Type-check every crate against the illumos target without linking
+# Type-check every crate against the illumos target without linking.
+# Needs clang and the illumos sysroot for the crates that compile C; the
+# sysroot is fetched on first use (build/cross/illumos-sysroot.sh).
 check-illumos:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ -z "${CC_x86_64_unknown_illumos:-}" ]; then
+        sysroot=${MANDRAKE_ILLUMOS_SYSROOT:-$HOME/.cache/mandrake/illumos-sysroot}
+        bash build/cross/illumos-sysroot.sh "$sysroot" >/dev/null
+        if ! command -v clang >/dev/null; then
+            if [ -x "/c/Program Files/LLVM/bin/clang.exe" ]; then
+                export PATH="/c/Program Files/LLVM/bin:$PATH"
+            else
+                echo "check-illumos: clang not found; install LLVM (docs/build.md)" >&2
+                exit 1
+            fi
+        fi
+        case "$(uname -s)" in MINGW* | MSYS* | CYGWIN*) sysroot=$(cygpath -m "$sysroot") ;; esac
+        export CC_x86_64_unknown_illumos="clang --target=x86_64-unknown-illumos --sysroot=$sysroot"
+        export AR_x86_64_unknown_illumos=llvm-ar
+    fi
     cargo check --workspace --all-targets --target {{illumos_target}}
 
 # What CI runs

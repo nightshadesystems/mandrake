@@ -9,12 +9,51 @@ authors.workspace = true
 repository.workspace = true
 homepage.workspace = true
 publish.workspace = true
+build = "build.rs"
 
 [[bin]]
 name = "mandraked"
 path = "src/main.rs"
 
 [dependencies]
+mandrake-core = { workspace = true }
+
+argon2 = { workspace = true }
+axum = { workspace = true }
+axum-server = { workspace = true }
+base64 = { workspace = true }
+clap = { workspace = true }
+rand = { workspace = true }
+rcgen = { workspace = true }
+rust-embed = { workspace = true }
+rustls = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+subtle = { workspace = true }
+thiserror = { workspace = true }
+time = { workspace = true }
+tokio = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+uuid = { workspace = true }
+
+# ADR-0009: the OmniOS libsqlite3 on illumos, a bundled copy elsewhere.
+[target.'cfg(target_os = "illumos")'.dependencies]
+rusqlite = { workspace = true }
+
+[target.'cfg(not(target_os = "illumos"))'.dependencies]
+rusqlite = { workspace = true, features = ["bundled"] }
+
+# The root Unix socket (ADR-0007) is served straight over hyper.
+[target.'cfg(unix)'.dependencies]
+hyper = { workspace = true }
+hyper-util = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
 
 [lints]
 workspace = true

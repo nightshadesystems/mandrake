@@ -1,31 +1,26 @@
-//! `mandraked`: the single daemon that owns Mandrake host management.
-//!
-//! Runs as `svc:/system/mandrake/mandraked:default`, serves the HTTP+JSON API
-//! defined in `api/openapi.yaml`, and embeds the web console. Phase 0 ships
-//! only this entry point; the server lands in Phase 2.
+//! Binary entry point: parse configuration, set up logging, run.
 
 use std::process::ExitCode;
 
-/// Program name as reported on `--version`.
-const NAME: &str = env!("CARGO_PKG_NAME");
-/// Crate version as reported on `--version`.
-const VERSION: &str = env!("CARGO_PKG_VERSION");
+use clap::Parser;
+use mandraked::{config::Config, serve};
+use tracing_subscriber::EnvFilter;
 
-fn main() -> ExitCode {
-    let mut args = std::env::args().skip(1);
-    match args.next().as_deref() {
-        Some("--version" | "-V") => {
-            println!("{NAME} {VERSION}");
-            ExitCode::SUCCESS
-        }
-        Some(other) => {
-            eprintln!("{NAME}: unknown argument `{other}`");
-            eprintln!("usage: {NAME} [--version]");
-            ExitCode::from(2)
-        }
-        None => {
-            eprintln!("{NAME} {VERSION}: scaffold build, no server yet (Phase 0)");
-            ExitCode::SUCCESS
+#[tokio::main]
+async fn main() -> ExitCode {
+    let cfg = Config::parse();
+    let filter = EnvFilter::try_new(&cfg.log).unwrap_or_else(|_| EnvFilter::new("info"));
+    tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_target(false)
+        .init();
+
+    match serve::run(cfg).await {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            tracing::error!(error = %e, "mandraked failed");
+            eprintln!("mandraked: {e}");
+            ExitCode::FAILURE
         }
     }
 }

@@ -40,21 +40,21 @@ axum = { version = "0.8", features = ["ws", "macros"] }
 # No `bundled` here: mandraked links the OmniOS libsqlite3 on illumos and
 # enables `bundled` for other targets itself (ADR-0009).
 rusqlite = "0.40"
-rust-embed = "8"
+rust-embed = { version = "8", features = ["mime-guess"] }
 
 # Approved additions for Phase 2 (signed off 2026-09-01; ADR-0007..0009).
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 uuid = { version = "1", features = ["v4", "v7", "serde"] }
 clap = { version = "4", features = ["derive", "env"] }
-argon2 = { version = "0.6", features = ["std"] }
+argon2 = "0.6"
 rand = "0.10"
 sha2 = "0.11"
 base64 = "0.23"
 subtle = "2"
-time = { version = "0.3", features = ["serde", "formatting", "parsing", "macros"] }
-tower = "0.5"
-tower-http = { version = "0.7", features = ["trace", "timeout", "limit"] }
+time = { version = "0.3", features = ["serde-well-known", "formatting", "parsing", "macros"] }
+tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.7", features = ["trace", "timeout", "limit", "request-id"] }
 axum-server = { version = "0.8", features = ["tls-rustls-no-provider"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 rcgen = "0.14"
@@ -62,8 +62,8 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 # rustls-no-provider: the plain `rustls` feature pulls in aws-lc-rs, which
 # needs cmake and a C toolchain; the ring provider is installed at startup.
 reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "json"] }
-hyper = { version = "1", features = ["client", "http1"] }
-hyper-util = { version = "0.1", features = ["tokio", "client-legacy", "http1"] }
+hyper = { version = "1", features = ["client", "server", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio", "client-legacy", "http1", "server", "server-auto", "service"] }
 tempfile = "3"
 
 [workspace.lints.rust]

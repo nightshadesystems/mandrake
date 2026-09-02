@@ -21,9 +21,15 @@ just check-illumos    # cargo check --target x86_64-unknown-illumos
 just gen-api-docs     # regenerate docs/api.md from api/openapi.yaml
 ```
 
-`check-illumos` type-checks against the illumos `std` without linking, so it
-works with no sysroot. A full cross-build with an illumos sysroot for fast
-iteration is set up when the first driver crate needs it.
+`check-illumos` type-checks against the illumos `std` without linking. The
+crates that compile C (`ring` behind rustls, and SQLite on non-illumos
+hosts) still need a C compiler for the target, so the recipe uses `clang`
+with the illumos sysroot from `github.com/illumos/sysroot`, fetched on
+first use into `~/.cache/mandrake/illumos-sysroot` by
+`build/cross/illumos-sysroot.sh`. Install LLVM to get `clang` and
+`llvm-ar`; on Windows the recipe also looks in `C:Program Fileslvm`.
+a full cross-link for fast iteration is set up when the first driver crate
+needs it.
 
 ### Vendored forks
 

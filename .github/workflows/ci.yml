@@ -37,6 +37,15 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      - uses: extractions/setup-just@v3
+
+      # clang is preinstalled on the Ubuntu image; the illumos sysroot is
+      # what `just check-illumos` needs for crates that compile C.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/mandrake/illumos-sysroot
+          key: illumos-sysroot-20181213-de6af22ae73b-v1
+
       - name: fmt
         run: cargo fmt --all --check
 
@@ -50,7 +59,7 @@ jobs:
         run: cargo test --workspace
 
       - name: check illumos target
-        run: cargo check --workspace --all-targets --target x86_64-unknown-illumos
+        run: just check-illumos
 
   console:
     name: console

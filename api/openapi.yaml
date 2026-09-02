@@ -24,8 +24,8 @@ info:
     minimum role in its description.
 
     Surface so far: `health`, `auth`, `system`, `users`, `tokens`, `audit`,
-    `jobs`, `events` (Phase 2); `storage` and `network` (Phase 3). Later
-    families have tags but no paths yet.
+    `jobs`, `events` (Phase 2); `storage` and `network` (Phase 3); `images`
+    and `zones` (Phase 4). Later families have tags but no paths yet.
   license:
     name: MIT
     identifier: MIT
@@ -1499,6 +1499,581 @@ paths:
         default:
           $ref: "#/components/responses/Problem"
 
+  # ------------------------------------------------------------- images
+
+  /images:
+    get:
+      tags: [images]
+      operationId: listImages
+      summary: List imported images
+      description: The catalogue of images on this host, every state. Any role.
+      parameters:
+        - name: type
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/ImageType"
+        - name: state
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/ImageState"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: Images
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImageList"
+        "401":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /images/import:
+    post:
+      tags: [images]
+      operationId: importImage
+      summary: Import an image
+      description: |
+        Role `operator`. Either `source_id` with `name` and `version` picks
+        an entry from a verified source's catalogue, or `url` with `sha256`
+        and `type` imports directly; the operator vouches for the hash.
+        Returns 202 with the job; the image appears at once in state
+        `pending` and moves through `downloading`, `verifying`, `importing`
+        to `ready` or `failed` (ADR-0012).
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ImageImport"
+      responses:
+        "202":
+          description: Import started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+        "422":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /images/available:
+    get:
+      tags: [images]
+      operationId: listAvailableImages
+      summary: Images offered by the sources
+      description: |
+        The cached catalogues of every enabled source, with whether each
+        entry is already imported. Refresh a source to update it. Any role.
+      parameters:
+        - name: source_id
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/Id"
+        - name: type
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/ImageType"
+      responses:
+        "200":
+          description: Catalogue entries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CatalogueEntryList"
+        "401":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /images/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [images]
+      operationId: getImage
+      summary: Get an image
+      description: Any role.
+      responses:
+        "200":
+          description: The image
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Image"
+        "404":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+    patch:
+      tags: [images]
+      operationId: updateImage
+      summary: Change metadata
+      description: Role `operator`.
+      parameters:
+        - $ref: "#/components/parameters/CsrfHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Metadata"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Image"
+        "404":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      tags: [images]
+      operationId: deleteImage
+      summary: Delete an image
+      description: |
+        Role `operator`. Destroys the image dataset, zvol, or file. Refused
+        with 409 `busy` while a zone or VM is cloned from it. A failed or
+        pending import is cancelled and its staging file removed.
+      parameters:
+        - $ref: "#/components/parameters/CsrfHeader"
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /images/sources:
+    get:
+      tags: [images]
+      operationId: listImageSources
+      summary: List image sources
+      description: Built-in and user-added sources. Any role.
+      responses:
+        "200":
+          description: Sources
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImageSourceList"
+        "401":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+    post:
+      tags: [images]
+      operationId: createImageSource
+      summary: Add an image source
+      description: |
+        Role `operator`. The index is fetched at once; the response carries
+        the outcome in `last_error`. Without `public_key` the source is
+        unverified and cannot be imported from (ADR-0012).
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ImageSourceCreate"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImageSource"
+        "409":
+          $ref: "#/components/responses/Problem"
+        "422":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /images/sources/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [images]
+      operationId: getImageSource
+      summary: Get a source
+      description: Any role.
+      responses:
+        "200":
+          description: The source
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImageSource"
+        "404":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+    patch:
+      tags: [images]
+      operationId: updateImageSource
+      summary: Change a source
+      description: Role `operator`. Built-in sources accept `enabled` and `public_key` only.
+      parameters:
+        - $ref: "#/components/parameters/CsrfHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ImageSourceUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImageSource"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "422":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      tags: [images]
+      operationId: deleteImageSource
+      summary: Remove a source
+      description: Role `operator`. Built-in sources cannot be removed; disable them. Imported images stay.
+      parameters:
+        - $ref: "#/components/parameters/CsrfHeader"
+      responses:
+        "204":
+          description: Deleted
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /images/sources/{id}/refresh:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    post:
+      tags: [images]
+      operationId: refreshImageSource
+      summary: Fetch the source's index now
+      description: |
+        Role `operator`. Fetches and verifies the index synchronously and
+        replaces the cached catalogue. A fetch or signature failure leaves
+        the old catalogue in place and is reported in `last_error`.
+      parameters:
+        - $ref: "#/components/parameters/CsrfHeader"
+      responses:
+        "200":
+          description: The source after the refresh
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImageSource"
+        "404":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  # ------------------------------------------------------------- zones
+
+  /zones:
+    get:
+      tags: [zones]
+      operationId: listZones
+      summary: List zones
+      description: Every zone except the `bhyve` brand, which is the VM family. Any role.
+      parameters:
+        - name: brand
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/ZoneBrand"
+        - name: state
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/ZoneState"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: Zones
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ZoneList"
+        "401":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+    post:
+      tags: [zones]
+      operationId: createZone
+      summary: Create and install a zone
+      description: |
+        Role `operator`. Writes the zonecfg synchronously, so the zone is
+        listed at once in state `configured`, then installs it in the job
+        returned with 202: an lx zone or a native zone with `image_id`
+        clones the image; a native zone without one installs from the
+        global zone's packages. `autoboot` and `start` control what happens
+        after install (ADR-0012).
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ZoneCreate"
+      responses:
+        "202":
+          description: Install started; the job's target is the new zone
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+        "422":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /zones/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [zones]
+      operationId: getZone
+      summary: Get a zone
+      description: Any role.
+      responses:
+        "200":
+          description: The zone
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Zone"
+        "404":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+    patch:
+      tags: [zones]
+      operationId: updateZone
+      summary: Change configuration or metadata
+      description: |
+        Role `operator`. Applied to the zonecfg at once. NIC and cap changes
+        take effect at the next boot of a running zone; `autoboot` and
+        metadata immediately.
+      parameters:
+        - $ref: "#/components/parameters/CsrfHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ZoneUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Zone"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "422":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      tags: [zones]
+      operationId: deleteZone
+      summary: Delete a zone
+      description: |
+        Role `operator`. Halts, uninstalls, and removes the configuration
+        in the job returned with 202. The zone's datasets stay unless
+        `purge` is set (spec §7).
+      parameters:
+        - $ref: "#/components/parameters/CsrfHeader"
+        - name: purge
+          in: query
+          required: false
+          description: Also destroy the zone's datasets
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "202":
+          description: Delete started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /zones/{id}/start:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    post:
+      tags: [zones]
+      operationId: startZone
+      summary: Boot a zone
+      description: Role `operator`. `zoneadm boot` as a job.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfHeader"
+      responses:
+        "202":
+          description: Boot started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /zones/{id}/stop:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    post:
+      tags: [zones]
+      operationId: stopZone
+      summary: Shut a zone down
+      description: |
+        Role `operator`. A clean `zoneadm shutdown` as a job; with `force`
+        an immediate `zoneadm halt`.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfHeader"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ZoneStop"
+      responses:
+        "202":
+          description: Stop started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /zones/{id}/restart:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    post:
+      tags: [zones]
+      operationId: restartZone
+      summary: Reboot a zone
+      description: Role `operator`. `zoneadm shutdown -r` as a job.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfHeader"
+      responses:
+        "202":
+          description: Restart started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /zones/{id}/console:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [zones]
+      operationId: zoneConsole
+      summary: Zone console (WebSocket)
+      description: |
+        Role `operator`. Upgrade to a WebSocket attached to the zone
+        console (`zlogin -C`). Server frames are terminal output; client
+        text or binary frames are keystrokes, except a text frame that
+        parses as `{"resize": {"cols": N, "rows": N}}`, which resizes the
+        terminal. One session per zone; a second connect is refused with
+        409 `busy`. Authenticate as for `/events`.
+      parameters:
+        - name: cols
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 20
+            maximum: 500
+            default: 80
+        - name: rows
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 5
+            maximum: 200
+            default: 24
+      responses:
+        "101":
+          description: Switching Protocols
+        "401":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+
 components:
   securitySchemes:
     sessionCookie:
@@ -2667,3 +3242,394 @@ components:
           description: "`default` or a network with prefix"
         gateway:
           type: string
+
+    # ----------------------------------------------------------- images
+
+    ImageType:
+      type: string
+      enum: [zone-native, zone-lx, vm-raw, vm-iso]
+      description: What the image is used for; fixes the on-disk form (ADR-0012)
+
+    ImageState:
+      type: string
+      enum: [pending, downloading, verifying, importing, ready, failed]
+
+    Image:
+      type: object
+      description: An image on this host, in any state of import.
+      required: [id, name, version, type, state, sha256, size_bytes, created_at]
+      properties:
+        id:
+          $ref: "#/components/schemas/Id"
+        name:
+          type: string
+        version:
+          type: string
+        type:
+          $ref: "#/components/schemas/ImageType"
+        state:
+          $ref: "#/components/schemas/ImageState"
+        sha256:
+          type: string
+          description: Hex digest of the payload as published
+        size_bytes:
+          type: integer
+          format: int64
+          description: Payload size as published
+        pool:
+          type: string
+        dataset:
+          type: string
+          description: "`<pool>/images/<id>` for datasets and zvols; absent for ISO files"
+        path:
+          type: string
+          description: File path for `vm-iso` images
+        source_id:
+          $ref: "#/components/schemas/Id"
+        source_name:
+          type: string
+        url:
+          type: string
+          description: Where the payload was fetched from
+        description:
+          type: string
+        os:
+          type: string
+          description: "Free text from the index, for example `debian-12`"
+        progress:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: Download or import progress while not `ready`
+        error:
+          type: string
+          description: Why the import failed
+        in_use_by:
+          type: integer
+          description: Zones and VMs cloned from this image
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+        imported_at:
+          $ref: "#/components/schemas/Timestamp"
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+
+    ImageList:
+      allOf:
+        - $ref: "#/components/schemas/Page"
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/Image"
+
+    ImageImport:
+      type: object
+      description: |
+        From a source: `source_id`, `name`, `version`. Direct: `url`,
+        `sha256`, `type`, `name`, `version`. `pool` defaults per ADR-0012.
+      required: [name, version]
+      properties:
+        source_id:
+          $ref: "#/components/schemas/Id"
+        name:
+          type: string
+        version:
+          type: string
+        url:
+          type: string
+        sha256:
+          type: string
+          pattern: "^[0-9a-fA-F]{64}$"
+        type:
+          $ref: "#/components/schemas/ImageType"
+        pool:
+          type: string
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+
+    CatalogueEntry:
+      type: object
+      description: One image a source offers.
+      required: [source_id, source_name, name, version, type, url, sha256, size_bytes, imported]
+      properties:
+        source_id:
+          $ref: "#/components/schemas/Id"
+        source_name:
+          type: string
+        name:
+          type: string
+        version:
+          type: string
+        type:
+          $ref: "#/components/schemas/ImageType"
+        url:
+          type: string
+        sha256:
+          type: string
+        size_bytes:
+          type: integer
+          format: int64
+        description:
+          type: string
+        os:
+          type: string
+        published_at:
+          $ref: "#/components/schemas/Timestamp"
+        imported:
+          type: boolean
+          description: An image with this sha256 is on the host
+        image_id:
+          $ref: "#/components/schemas/Id"
+
+    CatalogueEntryList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/CatalogueEntry"
+
+    ImageSource:
+      type: object
+      required: [id, name, url, enabled, builtin, verified, image_count, created_at]
+      properties:
+        id:
+          $ref: "#/components/schemas/Id"
+        name:
+          type: string
+        url:
+          type: string
+          description: "URL of `index.json`; `index.json.sig` sits beside it"
+        public_key:
+          type: string
+          description: Base64 Ed25519 public key; absent means unverified
+        enabled:
+          type: boolean
+        builtin:
+          type: boolean
+          description: Shipped with Mandrake; cannot be removed
+        verified:
+          type: boolean
+          description: A key is set and the last index verified against it
+        image_count:
+          type: integer
+          description: Entries in the cached catalogue
+        last_refreshed_at:
+          $ref: "#/components/schemas/Timestamp"
+        last_error:
+          type: string
+          description: Why the last refresh failed
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+
+    ImageSourceList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ImageSource"
+
+    ImageSourceCreate:
+      type: object
+      required: [name, url]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 64
+        url:
+          type: string
+          format: uri
+        public_key:
+          type: string
+          description: Base64 Ed25519 public key (32 bytes)
+        enabled:
+          type: boolean
+          default: true
+
+    ImageSourceUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        url:
+          type: string
+          format: uri
+        public_key:
+          type: [string, "null"]
+          description: Set, or null to make the source unverified
+        enabled:
+          type: boolean
+
+    # ----------------------------------------------------------- zones
+
+    ZoneBrand:
+      type: string
+      enum: [ipkg, lipkg, sparse, lx]
+      description: "OmniOS brands; `ipkg`, `lipkg`, and `sparse` are native"
+
+    ZoneState:
+      type: string
+      enum: [configured, incomplete, installed, ready, running, shutting_down, down, unavailable]
+      description: As `zoneadm list` reports it
+
+    ZoneNic:
+      type: object
+      description: A zonecfg `anet` resource; the VNIC exists while the zone runs.
+      required: [name, over]
+      properties:
+        name:
+          type: string
+          pattern: "^[a-zA-Z][a-zA-Z0-9_]{0,30}[0-9]$"
+          description: "Link name inside the zone, for example `net0`"
+        over:
+          type: string
+          description: Physical link, aggregation, or etherstub beneath it
+        mac:
+          type: string
+          description: Pinned MAC; absent means auto
+        vid:
+          type: integer
+          minimum: 1
+          maximum: 4094
+        address:
+          type: string
+          description: "`a.b.c.d/prefix` or `xx::/prefix`, applied by the brand where it can be"
+        gateway:
+          type: string
+          description: Default router for this address
+
+    Zone:
+      type: object
+      required: [id, name, brand, state, zonepath, autoboot, nics]
+      properties:
+        id:
+          $ref: "#/components/schemas/Id"
+        name:
+          type: string
+        brand:
+          $ref: "#/components/schemas/ZoneBrand"
+        state:
+          $ref: "#/components/schemas/ZoneState"
+        image_id:
+          $ref: "#/components/schemas/Id"
+        pool:
+          type: string
+        dataset:
+          type: string
+          description: "`<pool>/zones/<name>`"
+        zonepath:
+          type: string
+        nics:
+          type: array
+          items:
+            $ref: "#/components/schemas/ZoneNic"
+        cpu_cap:
+          type: number
+          description: "CPUs worth of time, for example `1.5`"
+        memory_cap_bytes:
+          type: integer
+          format: int64
+        autoboot:
+          type: boolean
+        hostname:
+          type: string
+        resolvers:
+          type: array
+          items:
+            type: string
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+
+    ZoneList:
+      allOf:
+        - $ref: "#/components/schemas/Page"
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/Zone"
+
+    ZoneCreate:
+      type: object
+      required: [name, brand]
+      properties:
+        name:
+          type: string
+          pattern: "^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,62}$"
+        brand:
+          $ref: "#/components/schemas/ZoneBrand"
+        image_id:
+          $ref: "#/components/schemas/Id"
+        pool:
+          type: string
+        nics:
+          type: array
+          items:
+            $ref: "#/components/schemas/ZoneNic"
+        cpu_cap:
+          type: number
+          exclusiveMinimum: 0
+        memory_cap_bytes:
+          type: integer
+          format: int64
+          minimum: 67108864
+        autoboot:
+          type: boolean
+          default: true
+        start:
+          type: boolean
+          default: true
+          description: Boot once installed
+        hostname:
+          type: string
+        resolvers:
+          type: array
+          items:
+            type: string
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+
+    ZoneUpdate:
+      type: object
+      properties:
+        nics:
+          type: array
+          description: Replaces the whole list
+          items:
+            $ref: "#/components/schemas/ZoneNic"
+        cpu_cap:
+          type: [number, "null"]
+          description: Null removes the cap
+        memory_cap_bytes:
+          type: [integer, "null"]
+          format: int64
+          description: Null removes the cap
+        autoboot:
+          type: boolean
+        hostname:
+          type: string
+        resolvers:
+          type: array
+          items:
+            type: string
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+
+    ZoneStop:
+      type: object
+      properties:
+        force:
+          type: boolean
+          default: false
+          description: "`zoneadm halt` instead of a clean shutdown"

@@ -21,3 +21,4 @@ Use [0000-template.md](0000-template.md) for new records.
 | [0009](0009-sqlite-linkage.md) | SQLite from the OmniOS package on illumos, bundled elsewhere | Accepted |
 | [0010](0010-packaging-and-service-layout.md) | Packaging and service layout for the daemon | Accepted |
 | [0011](0011-storage-and-network-model.md) | Storage and network drivers: identity, protection, jobs, testing | Accepted |
+| [0012](0012-images-and-zones-model.md) | Images and zones: storage layout, signed sources, identity, jobs, console | Accepted |

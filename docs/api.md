@@ -25,8 +25,8 @@ also manages users, tokens, and the system. Each operation lists the
 minimum role in its description.
 
 Surface so far: `health`, `auth`, `system`, `users`, `tokens`, `audit`,
-`jobs`, `events` (Phase 2); `storage` and `network` (Phase 3). Later
-families have tags but no paths yet.
+`jobs`, `events` (Phase 2); `storage` and `network` (Phase 3); `images`
+and `zones` (Phase 4). Later families have tags but no paths yet.
 
 ## Endpoints
 
@@ -90,6 +90,27 @@ families have tags but no paths yet.
 | GET | `/network/routes` | [List routes](#listroutes) |
 | POST | `/network/routes` | [Add a persistent static route](#createroute) |
 | DELETE | `/network/routes/{id}` | [Remove a static route](#deleteroute) |
+| GET | `/images` | [List imported images](#listimages) |
+| POST | `/images/import` | [Import an image](#importimage) |
+| GET | `/images/available` | [Images offered by the sources](#listavailableimages) |
+| GET | `/images/{id}` | [Get an image](#getimage) |
+| PATCH | `/images/{id}` | [Change metadata](#updateimage) |
+| DELETE | `/images/{id}` | [Delete an image](#deleteimage) |
+| GET | `/images/sources` | [List image sources](#listimagesources) |
+| POST | `/images/sources` | [Add an image source](#createimagesource) |
+| GET | `/images/sources/{id}` | [Get a source](#getimagesource) |
+| PATCH | `/images/sources/{id}` | [Change a source](#updateimagesource) |
+| DELETE | `/images/sources/{id}` | [Remove a source](#deleteimagesource) |
+| POST | `/images/sources/{id}/refresh` | [Fetch the source's index now](#refreshimagesource) |
+| GET | `/zones` | [List zones](#listzones) |
+| POST | `/zones` | [Create and install a zone](#createzone) |
+| GET | `/zones/{id}` | [Get a zone](#getzone) |
+| PATCH | `/zones/{id}` | [Change configuration or metadata](#updatezone) |
+| DELETE | `/zones/{id}` | [Delete a zone](#deletezone) |
+| POST | `/zones/{id}/start` | [Boot a zone](#startzone) |
+| POST | `/zones/{id}/stop` | [Shut a zone down](#stopzone) |
+| POST | `/zones/{id}/restart` | [Reboot a zone](#restartzone) |
+| GET | `/zones/{id}/console` | [Zone console (WebSocket)](#zoneconsole) |
 
 ## health
 
@@ -1181,6 +1202,429 @@ Request body: object
 | 409 | `Problem` | Error as RFC 7807 problem details |
 | default | `Problem` | Error as RFC 7807 problem details |
 
+## images
+
+Image catalogue and sources
+
+### listImages
+
+`GET /images`: List imported images.
+
+The catalogue of images on this host, every state. Any role.
+
+| Parameter | In | Type | Description |
+|---|---|---|---|
+| `type` | query | `ImageType` |  |
+| `state` | query | `ImageState` |  |
+| `limit` | query | integer |  |
+| `cursor` | query | string | Opaque cursor from a previous page's next_cursor |
+
+| Status | Body | Description |
+|---|---|---|
+| 200 | `ImageList` | Images |
+| 401 | `Problem` | Error as RFC 7807 problem details |
+| default | `Problem` | Error as RFC 7807 problem details |
+
+### importImage
+
+`POST /images/import`: Import an image.
+
+Role `operator`. Either `source_id` with `name` and `version` picks
+an entry from a verified source's catalogue, or `url` with `sha256`
+and `type` imports directly; the operator vouches for the hash.
+Returns 202 with the job; the image appears at once in state
+`pending` and moves through `downloading`, `verifying`, `importing`
+to `ready` or `failed` (ADR-0012).
+
+| Parameter | In | Type | Description |
+|---|---|---|---|
+| `Idempotency-Key` | header | string | Client-chosen key, scoped to the actor, kept 24 hours. A repeat with the same key and body returns the original response; a different body returns 422. |
+| `X-Mandrake-Request` | header | `1` | Must be `1` on mutating requests authenticated by the session cookie |
+
+Request body: `ImageImport`
+
+| Status | Body | Description |
+|---|---|---|
+| 202 | `Job` | Import started |
+| 404 | `Problem` | Error as RFC 7807 problem details |
+| 409 | `Problem` | Error as RFC 7807 problem details |
+| 422 | `Problem` | Error as RFC 7807 problem details |
+| default | `Problem` | Error as RFC 7807 problem details |
+
+### listAvailableImages
+
+`GET /images/available`: Images offered by the sources.
+
+The cached catalogues of every enabled source, with whether each
+entry is already imported. Refresh a source to update it. Any role.
+
+| Parameter | In | Type | Description |
+|---|---|---|---|
+| `source_id` | query | `Id` |  |
+| `type` | query | `ImageType` |  |
+
+| Status | Body | Description |
+|---|---|---|
+| 200 | `CatalogueEntryList` | Catalogue entries |
+| 401 | `Problem` | Error as RFC 7807 problem details |
+| default | `Problem` | Error as RFC 7807 problem details |
+
+### getImage
+
+`GET /images/{id}`: Get an image.
+
+Any role.
+
+| Parameter | In | Type | Description |
+|---|---|---|---|
+| `id` (required) | path | `Id` |  |
+
+| Status | Body | Description |
+|---|---|---|
+| 200 | `Image` | The image |
+| 404 | `Problem` | Error as RFC 7807 problem details |
+| default | `Problem` | Error as RFC 7807 problem details |
+
+### updateImage
+
+`PATCH /images/{id}`: Change metadata.
+
+Role `operator`.
+
+| Parameter | In | Type | Description |
+|---|---|---|---|
+| `id` (required) | path | `Id` |  |
+| `X-Mandrake-Request` | header | `1` | Must be `1` on mutating requests authenticated by the session cookie |
+
+Request body: `Metadata`
+
+| Status | Body | Description |
+|---|---|---|
+| 200 | `Image` | Updated |
+| 404 | `Problem` | Error as RFC 7807 problem details |
+| default | `Problem` | Error as RFC 7807 problem details |
+
+### deleteImage
+
+`DELETE /images/{id}`: Delete an image.
+
+Role `operator`. Destroys the image dataset, zvol, or file. Refused
+with 409 `busy` while a zone or VM is cloned from it. A failed or
+pending import is cancelled and its staging file removed.
+
+| Parameter | In | Type | Description |
+|---|---|---|---|
+| `id` (required) | path | `Id` |  |
+| `X-Mandrake-Request` | header | `1` | Must be `1` on mutating requests authenticated by the session cookie |
+
+| Status | Body | Description |
+|---|---|---|
+| 204 |  | Deleted |
+| 404 | `Problem` | Error as RFC 7807 problem details |
+| 409 | `Problem` | Error as RFC 7807 problem details |
+| default | `Problem` | Error as RFC 7807 problem details |
+
+### listImageSources
+
+`GET /images/sources`: List image sources.
+
+Built-in and user-added sources. Any role.
+
+| Status | Body | Description |
+|---|---|---|
+| 200 | `ImageSourceList` | Sources |
+| 401 | `Problem` | Error as RFC 7807 problem details |
+| default | `Problem` | Error as RFC 7807 problem details |
+
+### createImageSource
+
+`POST /images/sources`: Add an image source.
+
+Role `operator`. The index is fetched at once; the response carries
+the outcome in `last_error`. Without `public_key` the source is
+unverified and cannot be imported from (ADR-0012).
+
+| Parameter | In | Type | Description |
+|---|---|---|---|
+| `Idempotency-Key` | header | string | Client-chosen key, scoped to the actor, kept 24 hours. A repeat with the same key and body returns the original response; a different body returns 422. |
+| `X-Mandrake-Request` | header | `1` | Must be `1` on mutating requests authenticated by the session cookie |
+
+Request body: `ImageSourceCreate`
+
+| Status | Body | Description |
+|---|---|---|
+| 201 | `ImageSource` | Created |
+| 409 | `Problem` | Error as RFC 7807 problem details |
+| 422 | `Problem` | Error as RFC 7807 problem details |
+| default | `Problem` | Error as RFC 7807 problem details |
+
+### getImageSource
+
+`GET /images/sources/{id}`: Get a source.
+
+Any role.
+
+| Parameter | In | Type | Description |
+|---|---|---|---|
+| `id` (required) | path | `Id` |  |
+
+| Status | Body | Description |
+|---|---|---|
+| 200 | `ImageSource` | The source |
+| 404 | `Problem` | Error as RFC 7807 problem details |
+| default | `Problem` | Error as RFC 7807 problem details |
+
+### updateImageSource
+
+`PATCH /images/sources/{id}`: Change a source.
+
+Role `operator`. Built-in sources accept `enabled` and `public_key` only.
+
+| Parameter | In | Type | Description |
+|---|---|---|---|
+| `id` (required) | path | `Id` |  |
+| `X-Mandrake-Request` | header | `1` | Must be `1` on mutating requests authenticated by the session cookie |
+
+Request body: `ImageSourceUpdate`
+
+| Status | Body | Description |
+|---|---|---|
+| 200 | `ImageSource` | Updated |
+| 403 | `Problem` | Error as RFC 7807 problem details |
+| 404 | `Problem` | Error as RFC 7807 problem details |
+| 422 | `Problem` | Error as RFC 7807 problem details |
+| default | `Problem` | Error as RFC 7807 problem details |
+
+### deleteImageSource
+
+`DELETE /images/sources/{id}`: Remove a source.
+
+Role `operator`. Built-in sources cannot be removed; disable them. Imported images stay.
+
+| Parameter | In | Type | Description |
+|---|---|---|---|
+| `id` (required) | path | `Id` |  |
+| `X-Mandrake-Request` | header | `1` | Must be `1` on mutating requests authenticated by the session cookie |
+
+| Status | Body | Description |
+|---|---|---|
+| 204 |  | Deleted |
+| 403 | `Problem` | Error as RFC 7807 problem details |
+| 404 | `Problem` | Error as RFC 7807 problem details |
+| default | `Problem` | Error as RFC 7807 problem details |
+
+### refreshImageSource
+
+`POST /images/sources/{id}/refresh`: Fetch the source's index now.
+
+Role `operator`. Fetches and verifies the index synchronously and
+replaces the cached catalogue. A fetch or signature failure leaves
+the old catalogue in place and is reported in `last_error`.
+
+| Parameter | In | Type | Description |
+|---|---|---|---|
+| `id` (required) | path | `Id` |  |
+| `X-Mandrake-Request` | header | `1` | Must be `1` on mutating requests authenticated by the session cookie |
+
+| Status | Body | Description |
+|---|---|---|
+| 200 | `ImageSource` | The source after the refresh |
+| 404 | `Problem` | Error as RFC 7807 problem details |
+| default | `Problem` | Error as RFC 7807 problem details |
+
+## zones
+
+Native and lx zones
+
+### listZones
+
+`GET /zones`: List zones.
+
+Every zone except the `bhyve` brand, which is the VM family. Any role.
+
+| Parameter | In | Type | Description |
+|---|---|---|---|
+| `brand` | query | `ZoneBrand` |  |
+| `state` | query | `ZoneState` |  |
+| `limit` | query | integer |  |
+| `cursor` | query | string | Opaque cursor from a previous page's next_cursor |
+
+| Status | Body | Description |
+|---|---|---|
+| 200 | `ZoneList` | Zones |
+| 401 | `Problem` | Error as RFC 7807 problem details |
+| default | `Problem` | Error as RFC 7807 problem details |
+
+### createZone
+
+`POST /zones`: Create and install a zone.
+
+Role `operator`. Writes the zonecfg synchronously, so the zone is
+listed at once in state `configured`, then installs it in the job
+returned with 202: an lx zone or a native zone with `image_id`
+clones the image; a native zone without one installs from the
+global zone's packages. `autoboot` and `start` control what happens
+after install (ADR-0012).
+
+| Parameter | In | Type | Description |
+|---|---|---|---|
+| `Idempotency-Key` | header | string | Client-chosen key, scoped to the actor, kept 24 hours. A repeat with the same key and body returns the original response; a different body returns 422. |
+| `X-Mandrake-Request` | header | `1` | Must be `1` on mutating requests authenticated by the session cookie |
+
+Request body: `ZoneCreate`
+
+| Status | Body | Description |
+|---|---|---|
+| 202 | `Job` | Install started; the job's target is the new zone |
+| 404 | `Problem` | Error as RFC 7807 problem details |
+| 409 | `Problem` | Error as RFC 7807 problem details |
+| 422 | `Problem` | Error as RFC 7807 problem details |
+| default | `Problem` | Error as RFC 7807 problem details |
+
+### getZone
+
+`GET /zones/{id}`: Get a zone.
+
+Any role.
+
+| Parameter | In | Type | Description |
+|---|---|---|---|
+| `id` (required) | path | `Id` |  |
+
+| Status | Body | Description |
+|---|---|---|
+| 200 | `Zone` | The zone |
+| 404 | `Problem` | Error as RFC 7807 problem details |
+| default | `Problem` | Error as RFC 7807 problem details |
+
+### updateZone
+
+`PATCH /zones/{id}`: Change configuration or metadata.
+
+Role `operator`. Applied to the zonecfg at once. NIC and cap changes
+take effect at the next boot of a running zone; `autoboot` and
+metadata immediately.
+
+| Parameter | In | Type | Description |
+|---|---|---|---|
+| `id` (required) | path | `Id` |  |
+| `X-Mandrake-Request` | header | `1` | Must be `1` on mutating requests authenticated by the session cookie |
+
+Request body: `ZoneUpdate`
+
+| Status | Body | Description |
+|---|---|---|
+| 200 | `Zone` | Updated |
+| 404 | `Problem` | Error as RFC 7807 problem details |
+| 422 | `Problem` | Error as RFC 7807 problem details |
+| default | `Problem` | Error as RFC 7807 problem details |
+
+### deleteZone
+
+`DELETE /zones/{id}`: Delete a zone.
+
+Role `operator`. Halts, uninstalls, and removes the configuration
+in the job returned with 202. The zone's datasets stay unless
+`purge` is set (spec §7).
+
+| Parameter | In | Type | Description |
+|---|---|---|---|
+| `id` (required) | path | `Id` |  |
+| `X-Mandrake-Request` | header | `1` | Must be `1` on mutating requests authenticated by the session cookie |
+| `purge` | query | boolean | Also destroy the zone's datasets |
+
+| Status | Body | Description |
+|---|---|---|
+| 202 | `Job` | Delete started |
+| 404 | `Problem` | Error as RFC 7807 problem details |
+| 409 | `Problem` | Error as RFC 7807 problem details |
+| default | `Problem` | Error as RFC 7807 problem details |
+
+### startZone
+
+`POST /zones/{id}/start`: Boot a zone.
+
+Role `operator`. `zoneadm boot` as a job.
+
+| Parameter | In | Type | Description |
+|---|---|---|---|
+| `id` (required) | path | `Id` |  |
+| `Idempotency-Key` | header | string | Client-chosen key, scoped to the actor, kept 24 hours. A repeat with the same key and body returns the original response; a different body returns 422. |
+| `X-Mandrake-Request` | header | `1` | Must be `1` on mutating requests authenticated by the session cookie |
+
+| Status | Body | Description |
+|---|---|---|
+| 202 | `Job` | Boot started |
+| 404 | `Problem` | Error as RFC 7807 problem details |
+| 409 | `Problem` | Error as RFC 7807 problem details |
+| default | `Problem` | Error as RFC 7807 problem details |
+
+### stopZone
+
+`POST /zones/{id}/stop`: Shut a zone down.
+
+Role `operator`. A clean `zoneadm shutdown` as a job; with `force`
+an immediate `zoneadm halt`.
+
+| Parameter | In | Type | Description |
+|---|---|---|---|
+| `id` (required) | path | `Id` |  |
+| `Idempotency-Key` | header | string | Client-chosen key, scoped to the actor, kept 24 hours. A repeat with the same key and body returns the original response; a different body returns 422. |
+| `X-Mandrake-Request` | header | `1` | Must be `1` on mutating requests authenticated by the session cookie |
+
+Request body: `ZoneStop`
+
+| Status | Body | Description |
+|---|---|---|
+| 202 | `Job` | Stop started |
+| 404 | `Problem` | Error as RFC 7807 problem details |
+| 409 | `Problem` | Error as RFC 7807 problem details |
+| default | `Problem` | Error as RFC 7807 problem details |
+
+### restartZone
+
+`POST /zones/{id}/restart`: Reboot a zone.
+
+Role `operator`. `zoneadm shutdown -r` as a job.
+
+| Parameter | In | Type | Description |
+|---|---|---|---|
+| `id` (required) | path | `Id` |  |
+| `Idempotency-Key` | header | string | Client-chosen key, scoped to the actor, kept 24 hours. A repeat with the same key and body returns the original response; a different body returns 422. |
+| `X-Mandrake-Request` | header | `1` | Must be `1` on mutating requests authenticated by the session cookie |
+
+| Status | Body | Description |
+|---|---|---|
+| 202 | `Job` | Restart started |
+| 404 | `Problem` | Error as RFC 7807 problem details |
+| 409 | `Problem` | Error as RFC 7807 problem details |
+| default | `Problem` | Error as RFC 7807 problem details |
+
+### zoneConsole
+
+`GET /zones/{id}/console`: Zone console (WebSocket).
+
+Role `operator`. Upgrade to a WebSocket attached to the zone
+console (`zlogin -C`). Server frames are terminal output; client
+text or binary frames are keystrokes, except a text frame that
+parses as `{"resize": {"cols": N, "rows": N}}`, which resizes the
+terminal. One session per zone; a second connect is refused with
+409 `busy`. Authenticate as for `/events`.
+
+| Parameter | In | Type | Description |
+|---|---|---|---|
+| `id` (required) | path | `Id` |  |
+| `cols` | query | integer |  |
+| `rows` | query | integer |  |
+
+| Status | Body | Description |
+|---|---|---|
+| 101 |  | Switching Protocols |
+| 401 | `Problem` | Error as RFC 7807 problem details |
+| 404 | `Problem` | Error as RFC 7807 problem details |
+| 409 | `Problem` | Error as RFC 7807 problem details |
+| default | `Problem` | Error as RFC 7807 problem details |
+
 ## Schemas
 
 ### Id
@@ -1814,4 +2258,220 @@ Type: `static` \| `dhcp` \| `addrconf`
 |---|---|---|
 | `destination` (required) | string | `default` or a network with prefix |
 | `gateway` (required) | string |  |
+
+### ImageType
+
+What the image is used for; fixes the on-disk form (ADR-0012)
+
+Type: `zone-native` \| `zone-lx` \| `vm-raw` \| `vm-iso`
+
+### ImageState
+
+Type: `pending` \| `downloading` \| `verifying` \| `importing` \| `ready` \| `failed`
+
+### Image
+
+An image on this host, in any state of import.
+
+| Field | Type | Description |
+|---|---|---|
+| `id` (required) | `Id` |  |
+| `name` (required) | string |  |
+| `version` (required) | string |  |
+| `type` (required) | `ImageType` |  |
+| `state` (required) | `ImageState` |  |
+| `sha256` (required) | string | Hex digest of the payload as published |
+| `size_bytes` (required) | integer (int64) | Payload size as published |
+| `pool` | string |  |
+| `dataset` | string | `<pool>/images/<id>` for datasets and zvols; absent for ISO files |
+| `path` | string | File path for `vm-iso` images |
+| `source_id` | `Id` |  |
+| `source_name` | string |  |
+| `url` | string | Where the payload was fetched from |
+| `description` | string |  |
+| `os` | string | Free text from the index, for example `debian-12` |
+| `progress` | number | Download or import progress while not `ready` |
+| `error` | string | Why the import failed |
+| `in_use_by` | integer | Zones and VMs cloned from this image |
+| `created_at` (required) | `Timestamp` |  |
+| `imported_at` | `Timestamp` |  |
+| `metadata` | `Metadata` |  |
+
+### ImageList
+
+Extends `Page`.
+
+| Field | Type | Description |
+|---|---|---|
+| `items` (required) | array of `Image` |  |
+
+### ImageImport
+
+From a source: `source_id`, `name`, `version`. Direct: `url`, `sha256`, `type`, `name`, `version`. `pool` defaults per ADR-0012.
+
+| Field | Type | Description |
+|---|---|---|
+| `source_id` | `Id` |  |
+| `name` (required) | string |  |
+| `version` (required) | string |  |
+| `url` | string |  |
+| `sha256` | string |  |
+| `type` | `ImageType` |  |
+| `pool` | string |  |
+| `metadata` | `Metadata` |  |
+
+### CatalogueEntry
+
+One image a source offers.
+
+| Field | Type | Description |
+|---|---|---|
+| `source_id` (required) | `Id` |  |
+| `source_name` (required) | string |  |
+| `name` (required) | string |  |
+| `version` (required) | string |  |
+| `type` (required) | `ImageType` |  |
+| `url` (required) | string |  |
+| `sha256` (required) | string |  |
+| `size_bytes` (required) | integer (int64) |  |
+| `description` | string |  |
+| `os` | string |  |
+| `published_at` | `Timestamp` |  |
+| `imported` (required) | boolean | An image with this sha256 is on the host |
+| `image_id` | `Id` |  |
+
+### CatalogueEntryList
+
+| Field | Type | Description |
+|---|---|---|
+| `items` (required) | array of `CatalogueEntry` |  |
+
+### ImageSource
+
+| Field | Type | Description |
+|---|---|---|
+| `id` (required) | `Id` |  |
+| `name` (required) | string |  |
+| `url` (required) | string | URL of `index.json`; `index.json.sig` sits beside it |
+| `public_key` | string | Base64 Ed25519 public key; absent means unverified |
+| `enabled` (required) | boolean |  |
+| `builtin` (required) | boolean | Shipped with Mandrake; cannot be removed |
+| `verified` (required) | boolean | A key is set and the last index verified against it |
+| `image_count` (required) | integer | Entries in the cached catalogue |
+| `last_refreshed_at` | `Timestamp` |  |
+| `last_error` | string | Why the last refresh failed |
+| `created_at` (required) | `Timestamp` |  |
+
+### ImageSourceList
+
+| Field | Type | Description |
+|---|---|---|
+| `items` (required) | array of `ImageSource` |  |
+
+### ImageSourceCreate
+
+| Field | Type | Description |
+|---|---|---|
+| `name` (required) | string |  |
+| `url` (required) | string (uri) |  |
+| `public_key` | string | Base64 Ed25519 public key (32 bytes) |
+| `enabled` | boolean |  |
+
+### ImageSourceUpdate
+
+| Field | Type | Description |
+|---|---|---|
+| `name` | string |  |
+| `url` | string (uri) |  |
+| `public_key` | string \| null | Set, or null to make the source unverified |
+| `enabled` | boolean |  |
+
+### ZoneBrand
+
+OmniOS brands; `ipkg`, `lipkg`, and `sparse` are native
+
+Type: `ipkg` \| `lipkg` \| `sparse` \| `lx`
+
+### ZoneState
+
+As `zoneadm list` reports it
+
+Type: `configured` \| `incomplete` \| `installed` \| `ready` \| `running` \| `shutting_down` \| `down` \| `unavailable`
+
+### ZoneNic
+
+A zonecfg `anet` resource; the VNIC exists while the zone runs.
+
+| Field | Type | Description |
+|---|---|---|
+| `name` (required) | string | Link name inside the zone, for example `net0` |
+| `over` (required) | string | Physical link, aggregation, or etherstub beneath it |
+| `mac` | string | Pinned MAC; absent means auto |
+| `vid` | integer |  |
+| `address` | string | `a.b.c.d/prefix` or `xx::/prefix`, applied by the brand where it can be |
+| `gateway` | string | Default router for this address |
+
+### Zone
+
+| Field | Type | Description |
+|---|---|---|
+| `id` (required) | `Id` |  |
+| `name` (required) | string |  |
+| `brand` (required) | `ZoneBrand` |  |
+| `state` (required) | `ZoneState` |  |
+| `image_id` | `Id` |  |
+| `pool` | string |  |
+| `dataset` | string | `<pool>/zones/<name>` |
+| `zonepath` (required) | string |  |
+| `nics` (required) | array of `ZoneNic` |  |
+| `cpu_cap` | number | CPUs worth of time, for example `1.5` |
+| `memory_cap_bytes` | integer (int64) |  |
+| `autoboot` (required) | boolean |  |
+| `hostname` | string |  |
+| `resolvers` | array of string |  |
+| `created_at` | `Timestamp` |  |
+| `metadata` | `Metadata` |  |
+
+### ZoneList
+
+Extends `Page`.
+
+| Field | Type | Description |
+|---|---|---|
+| `items` (required) | array of `Zone` |  |
+
+### ZoneCreate
+
+| Field | Type | Description |
+|---|---|---|
+| `name` (required) | string |  |
+| `brand` (required) | `ZoneBrand` |  |
+| `image_id` | `Id` |  |
+| `pool` | string |  |
+| `nics` | array of `ZoneNic` |  |
+| `cpu_cap` | number |  |
+| `memory_cap_bytes` | integer (int64) |  |
+| `autoboot` | boolean |  |
+| `start` | boolean | Boot once installed |
+| `hostname` | string |  |
+| `resolvers` | array of string |  |
+| `metadata` | `Metadata` |  |
+
+### ZoneUpdate
+
+| Field | Type | Description |
+|---|---|---|
+| `nics` | array of `ZoneNic` | Replaces the whole list |
+| `cpu_cap` | number \| null | Null removes the cap |
+| `memory_cap_bytes` | integer \| null (int64) | Null removes the cap |
+| `autoboot` | boolean |  |
+| `hostname` | string |  |
+| `resolvers` | array of string |  |
+| `metadata` | `Metadata` |  |
+
+### ZoneStop
+
+| Field | Type | Description |
+|---|---|---|
+| `force` | boolean | `zoneadm halt` instead of a clean shutdown |
 

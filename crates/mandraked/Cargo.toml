@@ -17,6 +17,7 @@ path = "src/main.rs"
 
 [dependencies]
 mandrake-core = { workspace = true }
+mandrake-net = { workspace = true }
 mandrake-zfs = { workspace = true }
 
 argon2 = { workspace = true }

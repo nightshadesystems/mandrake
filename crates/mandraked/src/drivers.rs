@@ -1,11 +1,12 @@
 //! Which driver implementations the daemon runs with, and how driver
 //! failures become API problems.
 
-use std::{sync::Arc, time::Duration};
+use std::{net::IpAddr, sync::Arc, time::Duration};
 
 use axum::http::StatusCode;
-use mandrake_core::shell::SystemRunner;
-use mandrake_zfs::{FailureKind, FakeZfs, Zfs, ZfsCli, ZfsError};
+use mandrake_core::shell::{FailureKind, SystemRunner};
+use mandrake_net::{FakeNet, Net, NetCli, NetError};
+use mandrake_zfs::{FakeZfs, Zfs, ZfsCli, ZfsError};
 
 use crate::{auth::ratelimit::LoginLimiter, error::ApiError};
 
@@ -18,17 +19,25 @@ pub struct Options {
     pub login_limiter: LoginLimiter,
     /// Storage driver.
     pub zfs: Arc<dyn Zfs>,
+    /// Network driver.
+    pub net: Arc<dyn Net>,
     /// How often a scan job polls the pool.
     pub scan_poll: Duration,
+    /// The address the HTTPS listener is bound to, when it is a specific
+    /// one; part of what makes the management path protected.
+    pub listen: Option<IpAddr>,
 }
 
 impl Options {
     /// The real drivers, shelling out to illumos tooling.
     pub fn system() -> Self {
+        let runner = Arc::new(SystemRunner::new());
         Self {
             login_limiter: LoginLimiter::default_login(),
-            zfs: Arc::new(ZfsCli::new(Arc::new(SystemRunner::new()))),
+            zfs: Arc::new(ZfsCli::new(runner.clone())),
+            net: Arc::new(NetCli::new(runner)),
             scan_poll: Duration::from_secs(2),
+            listen: None,
         }
     }
 
@@ -38,7 +47,9 @@ impl Options {
         Self {
             login_limiter: LoginLimiter::default_login(),
             zfs: Arc::new(FakeZfs::typical()),
+            net: Arc::new(FakeNet::typical()),
             scan_poll: Duration::from_millis(20),
+            listen: None,
         }
     }
 
@@ -55,6 +66,47 @@ impl Options {
         self.zfs = zfs;
         self
     }
+
+    /// Replace the network driver.
+    #[must_use]
+    pub fn with_net(mut self, net: Arc<dyn Net>) -> Self {
+        self.net = net;
+        self
+    }
+
+    /// Record the listener address; wildcard addresses count as none.
+    #[must_use]
+    pub fn with_listen(mut self, listen: IpAddr) -> Self {
+        self.listen = (!listen.is_unspecified()).then_some(listen);
+        self
+    }
+}
+
+/// A driver failure as an API problem.
+fn driver_error(
+    kind: FailureKind,
+    detail: String,
+    what: &str,
+    error: &dyn std::fmt::Display,
+) -> ApiError {
+    match kind {
+        FailureKind::NotFound => ApiError::new(StatusCode::NOT_FOUND, "Not Found").detail(detail),
+        FailureKind::Exists => ApiError::conflict(&detail),
+        FailureKind::Conflict => {
+            ApiError::typed(StatusCode::CONFLICT, "busy", "Conflict").detail(detail)
+        }
+        FailureKind::Forbidden => ApiError::forbidden(&detail),
+        FailureKind::Invalid => ApiError::unprocessable(&detail),
+        FailureKind::Other => {
+            tracing::error!(error = %error, "{what} command failed");
+            ApiError::typed(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "command-failed",
+                "Internal Server Error",
+            )
+            .detail(detail)
+        }
+    }
 }
 
 impl From<ZfsError> for ApiError {
@@ -63,25 +115,16 @@ impl From<ZfsError> for ApiError {
             ZfsError::Command(c) => c.stderr().to_owned(),
             other => other.to_string(),
         };
-        match e.kind() {
-            FailureKind::NotFound => {
-                ApiError::new(StatusCode::NOT_FOUND, "Not Found").detail(detail)
-            }
-            FailureKind::Exists => ApiError::conflict(&detail),
-            FailureKind::Conflict => {
-                ApiError::typed(StatusCode::CONFLICT, "busy", "Conflict").detail(detail)
-            }
-            FailureKind::Forbidden => ApiError::forbidden(&detail),
-            FailureKind::Invalid => ApiError::unprocessable(&detail),
-            FailureKind::Other => {
-                tracing::error!(error = %e, "storage command failed");
-                ApiError::typed(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "command-failed",
-                    "Internal Server Error",
-                )
-                .detail(detail)
-            }
-        }
+        driver_error(e.kind(), detail, "storage", &e)
+    }
+}
+
+impl From<NetError> for ApiError {
+    fn from(e: NetError) -> Self {
+        let detail = match &e {
+            NetError::Command(c) => c.stderr().to_owned(),
+            other => other.to_string(),
+        };
+        driver_error(e.kind(), detail, "network", &e)
     }
 }

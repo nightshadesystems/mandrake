@@ -1144,6 +1144,7 @@ dependencies = [
  "hyper",
  "hyper-util",
  "mandrake-core",
+ "mandrake-net",
  "mandrake-zfs",
  "rand 0.10.2",
  "rcgen",

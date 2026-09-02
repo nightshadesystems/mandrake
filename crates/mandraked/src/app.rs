@@ -1,6 +1,10 @@
 //! Application state and router assembly.
 
-use std::{net::SocketAddr, sync::Arc, time::Duration};
+use std::{
+    net::{IpAddr, SocketAddr},
+    sync::Arc,
+    time::Duration,
+};
 
 use axum::{
     Router,
@@ -11,6 +15,7 @@ use axum::{
     routing::{get, post, put},
 };
 use mandrake_core::Id;
+use mandrake_net::{AddressInfo, LinkInfo, Net, RouteInfo};
 use mandrake_zfs::{DatasetInfo, PoolInfo, SnapshotInfo, Zfs};
 use rusqlite::OptionalExtension;
 use tower::ServiceBuilder;
@@ -61,6 +66,16 @@ pub struct Inner {
     pub datasets_cache: TtlCache<Vec<DatasetInfo>>,
     /// Cached `zfs list -t snapshot` of everything.
     pub snapshots_cache: TtlCache<Vec<SnapshotInfo>>,
+    /// Network driver.
+    pub net: Arc<dyn Net>,
+    /// The specific address the HTTPS listener is bound to, if any.
+    pub listen: Option<IpAddr>,
+    /// Cached datalinks.
+    pub links_cache: TtlCache<Vec<LinkInfo>>,
+    /// Cached address objects.
+    pub addresses_cache: TtlCache<Vec<AddressInfo>>,
+    /// Cached routing table.
+    pub routes_cache: TtlCache<Vec<RouteInfo>>,
 }
 
 impl std::ops::Deref for AppState {
@@ -87,7 +102,9 @@ impl AppState {
         let Options {
             login_limiter,
             zfs,
+            net,
             scan_poll,
+            listen,
         } = options;
         let host_id = db
             .call(|conn| {
@@ -116,6 +133,11 @@ impl AppState {
             pools_cache: TtlCache::new(LIST_TTL),
             datasets_cache: TtlCache::new(LIST_TTL),
             snapshots_cache: TtlCache::new(LIST_TTL),
+            net,
+            listen,
+            links_cache: TtlCache::new(LIST_TTL),
+            addresses_cache: TtlCache::new(LIST_TTL),
+            routes_cache: TtlCache::new(LIST_TTL),
         })))
     }
 }
@@ -175,6 +197,7 @@ pub fn api_router(state: AppState) -> Router {
         .route("/jobs/{id}", get(routes::jobs::get_one))
         .route("/events", get(routes::events::stream))
         .merge(routes::storage::router())
+        .merge(routes::network::router())
         .layer(middleware::from_fn_with_state(
             state.clone(),
             idempotency::layer,

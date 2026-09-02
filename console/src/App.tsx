@@ -5,6 +5,7 @@ import { Dashboard } from './pages/Dashboard.tsx';
 import { Login } from './pages/Login.tsx';
 import { NotYet } from './pages/NotYet.tsx';
 import { Shell } from './pages/Shell.tsx';
+import { Storage } from './pages/Storage.tsx';
 import { Users } from './pages/Users.tsx';
 
 const router = createBrowserRouter([
@@ -14,6 +15,7 @@ const router = createBrowserRouter([
     Component: Shell,
     children: [
       { index: true, Component: Dashboard },
+      { path: 'storage', Component: Storage },
       { path: 'system/users', Component: Users },
       { path: 'system/audit', Component: Audit },
       { path: '*', Component: NotYet },

@@ -31,7 +31,7 @@ const SECTIONS: Section[] = [
   { label: 'Zones', path: '/zones', phase: 4 },
   { label: 'Images', path: '/images', phase: 4 },
   { label: 'Network', path: '/network', phase: 3 },
-  { label: 'Storage', path: '/storage', phase: 3 },
+  { label: 'Storage', path: '/storage' },
   {
     label: 'System',
     path: '/system/users',

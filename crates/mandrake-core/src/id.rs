@@ -24,6 +24,15 @@ impl Id {
     pub const fn as_uuid(&self) -> &Uuid {
         &self.0
     }
+
+    /// A deterministic id for an object illumos gives no property store
+    /// (ADR-0011): UUID v5 over the host id, the object kind, and its name.
+    pub fn derived(host: Id, kind: &str, name: &str) -> Self {
+        Self(Uuid::new_v5(
+            host.as_uuid(),
+            format!("{kind}:{name}").as_bytes(),
+        ))
+    }
 }
 
 impl Default for Id {

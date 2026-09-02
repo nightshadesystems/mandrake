@@ -11,6 +11,7 @@ use axum::{
     routing::{get, post, put},
 };
 use mandrake_core::Id;
+use mandrake_zfs::{DatasetInfo, PoolInfo, SnapshotInfo, Zfs};
 use rusqlite::OptionalExtension;
 use tower::ServiceBuilder;
 use tower_http::{
@@ -22,8 +23,10 @@ use tower_http::{
 
 use crate::{
     auth::{Source, ratelimit::LoginLimiter},
+    cache::TtlCache,
     console,
     db::Db,
+    drivers::{LIST_TTL, Options},
     error::ApiError,
     events::EventBus,
     idempotency, routes,
@@ -48,6 +51,16 @@ pub struct Inner {
     pub host_id: Id,
     /// Daemon version.
     pub version: &'static str,
+    /// Storage driver.
+    pub zfs: Arc<dyn Zfs>,
+    /// How often scan jobs poll the pool.
+    pub scan_poll: Duration,
+    /// Cached `zpool` listing.
+    pub pools_cache: TtlCache<Vec<PoolInfo>>,
+    /// Cached `zfs list` of filesystems and volumes.
+    pub datasets_cache: TtlCache<Vec<DatasetInfo>>,
+    /// Cached `zfs list -t snapshot` of everything.
+    pub snapshots_cache: TtlCache<Vec<SnapshotInfo>>,
 }
 
 impl std::ops::Deref for AppState {
@@ -61,11 +74,21 @@ impl std::ops::Deref for AppState {
 impl AppState {
     /// Build state over an opened database, creating the host id if needed.
     pub async fn new(db: Db) -> Result<Self, ApiError> {
-        Self::with_limiter(db, LoginLimiter::default_login()).await
+        Self::with_options(db, Options::system()).await
     }
 
-    /// As [`Self::new`], with a custom login limiter (tests).
+    /// Fake drivers and a custom login limiter (tests).
     pub async fn with_limiter(db: Db, login_limiter: LoginLimiter) -> Result<Self, ApiError> {
+        Self::with_options(db, Options::fake().with_limiter(login_limiter)).await
+    }
+
+    /// Build state over an opened database with the given drivers.
+    pub async fn with_options(db: Db, options: Options) -> Result<Self, ApiError> {
+        let Options {
+            login_limiter,
+            zfs,
+            scan_poll,
+        } = options;
         let host_id = db
             .call(|conn| {
                 let existing: Option<String> = conn
@@ -88,6 +111,11 @@ impl AppState {
             login_limiter,
             host_id,
             version: env!("CARGO_PKG_VERSION"),
+            zfs,
+            scan_poll,
+            pools_cache: TtlCache::new(LIST_TTL),
+            datasets_cache: TtlCache::new(LIST_TTL),
+            snapshots_cache: TtlCache::new(LIST_TTL),
         })))
     }
 }
@@ -146,6 +174,7 @@ pub fn api_router(state: AppState) -> Router {
         .route("/jobs", get(routes::jobs::list))
         .route("/jobs/{id}", get(routes::jobs::get_one))
         .route("/events", get(routes::events::stream))
+        .merge(routes::storage::router())
         .layer(middleware::from_fn_with_state(
             state.clone(),
             idempotency::layer,

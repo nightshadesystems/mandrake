@@ -45,7 +45,7 @@ rust-embed = { version = "8", features = ["mime-guess"] }
 # Approved additions for Phase 2 (signed off 2026-09-01; ADR-0007..0009).
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-uuid = { version = "1", features = ["v4", "v7", "serde"] }
+uuid = { version = "1", features = ["v4", "v5", "v7", "serde"] }
 clap = { version = "4", features = ["derive", "env"] }
 argon2 = "0.6"
 rand = "0.10"

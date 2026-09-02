@@ -14,15 +14,18 @@
 pub mod app;
 pub mod audit;
 pub mod auth;
+pub mod cache;
 pub mod config;
 pub mod console;
 pub mod cursor;
 pub mod db;
+pub mod drivers;
 pub mod error;
 pub mod events;
 pub mod host;
 pub mod idempotency;
 pub mod jobs;
+pub mod metadata;
 pub mod routes;
 pub mod serve;
 #[cfg(unix)]

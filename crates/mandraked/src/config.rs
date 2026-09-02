@@ -25,6 +25,11 @@ pub struct Config {
     #[arg(long, env = "MANDRAKED_NO_SOCKET")]
     pub no_socket: bool,
 
+    /// Use in-memory fake drivers instead of the illumos tools, for
+    /// developing the console away from illumos. Never on an appliance.
+    #[arg(long, env = "MANDRAKED_FAKE_DRIVERS")]
+    pub fake_drivers: bool,
+
     /// SQLite database path.
     #[arg(
         long,

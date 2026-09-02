@@ -38,7 +38,13 @@ pub async fn run(cfg: Config) -> Result<(), RunError> {
 
     let db = Db::open(&cfg.db)?;
     tracing::info!(path = %cfg.db.display(), "database open");
-    let state = AppState::new(db).await?;
+    let options = if cfg.fake_drivers {
+        tracing::warn!("running with fake drivers; storage and network are simulated");
+        crate::drivers::Options::fake()
+    } else {
+        crate::drivers::Options::system()
+    };
+    let state = AppState::with_options(db, options).await?;
     match state.db.call(|conn| crate::jobs::recover(conn)).await {
         Ok(n) if n > 0 => tracing::warn!(
             jobs = n,

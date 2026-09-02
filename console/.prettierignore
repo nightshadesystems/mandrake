@@ -1,4 +1,11 @@
 dist
 node_modules
 pnpm-lock.yaml
-src/api/generated
+design/components
+design/types
+design/clarity
+design/tokens
+design/assets
+design/UPSTREAM.md
+public/vendor
+src/api/schema.d.ts

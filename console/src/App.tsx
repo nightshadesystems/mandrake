@@ -1,6 +1,26 @@
-// Phase 0 shell. No pages, no styling, no design tokens yet: the Nightshade
-// Systems design system is exported into console/design/ in Phase 2 before
-// any page is built (spec §8).
+import { createBrowserRouter, RouterProvider } from 'react-router';
+
+import { Audit } from './pages/Audit.tsx';
+import { Dashboard } from './pages/Dashboard.tsx';
+import { Login } from './pages/Login.tsx';
+import { NotYet } from './pages/NotYet.tsx';
+import { Shell } from './pages/Shell.tsx';
+import { Users } from './pages/Users.tsx';
+
+const router = createBrowserRouter([
+  { path: '/login', Component: Login },
+  {
+    path: '/',
+    Component: Shell,
+    children: [
+      { index: true, Component: Dashboard },
+      { path: 'system/users', Component: Users },
+      { path: 'system/audit', Component: Audit },
+      { path: '*', Component: NotYet },
+    ],
+  },
+]);
+
 export function App() {
-  return <main>Mandrake</main>;
+  return <RouterProvider router={router} />;
 }

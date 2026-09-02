@@ -21,6 +21,11 @@ just check-illumos    # cargo check --target x86_64-unknown-illumos
 just gen-api-docs     # regenerate docs/api.md from api/openapi.yaml
 ```
 
+The console has its own dev loop against a locally running daemon; see
+[console/README.md](../console/README.md). `just build-console` produces
+`console/dist`, which `mandraked` embeds at build time, so build the console
+before a release build of the daemon.
+
 `check-illumos` type-checks against the illumos `std` without linking. The
 crates that compile C (`ring` behind rustls, and SQLite on non-illumos
 hosts) still need a C compiler for the target, so the recipe uses `clang`

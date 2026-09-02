@@ -10,11 +10,12 @@
     "node": ">=22"
   },
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
+    "dev": "pnpm gen-client && pnpm vendor && vite",
+    "build": "pnpm gen-client && pnpm vendor && tsc -b && vite build",
+    "vendor": "node scripts/vendor.mjs",
     "preview": "vite preview",
-    "typecheck": "tsc -b",
-    "lint": "eslint . && prettier --check .",
+    "typecheck": "pnpm gen-client && tsc -b",
+    "lint": "pnpm gen-client && eslint . && prettier --check .",
     "gen-client": "openapi-typescript ../api/openapi.yaml -o src/api/schema.d.ts",
     "gen-api-docs": "node scripts/gen-api-docs.mjs",
     "check-api-docs": "node scripts/gen-api-docs.mjs --check",

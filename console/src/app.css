@@ -1,0 +1,108 @@
+/* App-level layout only. Every colour, radius, and type value comes from
+   design/ tokens; nothing here introduces a new one. */
+
+.page-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.page-header h1 {
+  font-size: 24px;
+  line-height: 32px;
+  font-weight: 400;
+  color: var(--cds-alias-typography-color-450);
+  margin: 0;
+}
+.page-header .spacer {
+  margin-left: auto;
+}
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+.kv {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  column-gap: 16px;
+  row-gap: 6px;
+  font-size: 13px;
+}
+.kv dt {
+  color: var(--cds-alias-typography-color-300);
+  margin: 0;
+}
+.kv dd {
+  margin: 0;
+  color: var(--cds-alias-typography-color-450);
+}
+
+.mono {
+  font-family: var(--cds-alias-typography-monospace-font-family);
+  font-size: 12px;
+}
+
+.gauge {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.activity {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+}
+.activity-row {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  gap: 12px;
+  align-items: baseline;
+}
+.activity-row .when {
+  color: var(--cds-alias-typography-color-300);
+  white-space: nowrap;
+}
+
+.form-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.form-stack .clr-input,
+.form-stack .clr-select-wrapper,
+.form-stack .clr-password-wrapper {
+  max-width: none;
+}
+
+.toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.toolbar .spacer {
+  margin-left: auto;
+}
+
+.empty {
+  padding: 48px;
+  text-align: center;
+  color: var(--cds-alias-typography-color-300);
+}
+.empty p {
+  margin-top: 8px;
+}
+
+.wordmark {
+  font-family: var(--ns-font-brand);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  white-space: nowrap;
+}

@@ -23,3 +23,7 @@ Thumbs.db
 # Local env
 .env
 .env.*
+
+# Console build-time vendoring and generated client
+console/public/vendor/
+console/src/api/schema.d.ts

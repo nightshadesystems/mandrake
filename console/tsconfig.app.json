@@ -22,7 +22,13 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
-    "noUncheckedSideEffectImports": true
+    "noUncheckedSideEffectImports": true,
+
+    // The design-system components are JSX consumed through src/design/index.ts;
+    // their upstream .d.ts files reference React as a UMD global.
+    "allowJs": true,
+    "checkJs": false,
+    "allowUmdGlobalAccess": true
   },
   "include": ["src"]
 }

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="352" height="64" viewBox="0 0 352 64" fill="none">
+  <rect width="352" height="64" fill="#A78BE8"></rect>
+  <polygon points="32,6 54.5,19 54.5,45 32,58 9.5,45 9.5,19" fill="rgba(255,255,255,0.24)" stroke="#FFFFFF" stroke-width="3.5" stroke-linejoin="round"></polygon>
+  <path d="M32 32 L32 6 M32 32 L54.5 45 M32 32 L9.5 45" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round"></path>
+  <text x="84" y="44" font-family="Archivo, &#39;Helvetica Neue&#39;, Helvetica, Arial, sans-serif" font-weight="700" font-size="42" letter-spacing="-0.8" fill="#FFFFFF">Nightshade</text>
+</svg>

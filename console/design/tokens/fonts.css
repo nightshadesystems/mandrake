@@ -1,0 +1,7 @@
+/* Nightshade Clarity webfonts — Archivo (brand + UI) and IBM Plex Mono
+   (technical values), both per the Nightshade logo & icon kit.
+
+   Mandrake: the upstream Google Fonts @import is replaced by the
+   self-hosted @fontsource packages imported from src/main.tsx, so the
+   appliance serves its own fonts (ADR-0008). This is the only edit made
+   to the design-system export. */

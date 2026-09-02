@@ -1,0 +1,7 @@
+#
+# system/mandrake/cli
+#
+
+license ../../../LICENSE license=MIT
+
+<transform file path=usr/bin/mandrakectl -> set mode 0555>

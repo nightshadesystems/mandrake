@@ -1,0 +1,24 @@
+#
+# system/mandrake/daemon
+#
+
+license ../../../LICENSE license=MIT
+
+# The daemon's user (ADR-0010). uid/gid 63 is unused by illumos and OmniOS.
+group groupname=mandrake gid=63
+user username=mandrake uid=63 group=mandrake gcos-field="Mandrake daemon" \
+    home-dir=/var/mandrake login-shell=/usr/bin/false password=NP
+
+# Metadata store and TLS material, writable only by the daemon.
+dir path=var/mandrake owner=mandrake group=mandrake mode=0700
+dir path=etc/mandrake owner=root group=sys mode=0755
+dir path=etc/mandrake/tls owner=mandrake group=mandrake mode=0700
+
+<transform file path=usr/lib/mandrake/mandraked -> set mode 0555>
+<transform file path=lib/svc/method/svc-mandraked -> set mode 0555>
+<transform file path=lib/svc/manifest/.* -> set group sys>
+<transform file path=lib/svc/manifest/.* -> set mode 0444>
+
+# The service comes up on first boot: manifest-import picks up the bundle.
+<transform file path=lib/svc/manifest/.*\.xml$ -> \
+    add restart_fmri svc:/system/manifest-import:default>

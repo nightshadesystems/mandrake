@@ -1,0 +1,48 @@
+#!/bin/sh
+#
+# SMF method for svc:/system/mandrake/{setup,mandraked} (ADR-0010).
+#
+#   setup   as root: create the runtime directory for the socket
+#   start   as the mandrake user: read config properties, exec the daemon
+
+# shellcheck disable=SC1091
+. /lib/svc/share/smf_include.sh
+
+DAEMON=/usr/lib/mandrake/mandraked
+RUNDIR=/var/run/mandrake
+USER=mandrake
+
+prop() {
+    svcprop -p "config/$1" "$SMF_FMRI"
+}
+
+case "$1" in
+setup)
+    mkdir -p "$RUNDIR" || exit "$SMF_EXIT_ERR_FATAL"
+    chown "$USER:$USER" "$RUNDIR" || exit "$SMF_EXIT_ERR_FATAL"
+    chmod 0755 "$RUNDIR" || exit "$SMF_EXIT_ERR_FATAL"
+    exit "$SMF_EXIT_OK"
+    ;;
+start)
+    listen=$(prop listen)
+    socket=$(prop socket)
+    db=$(prop db)
+    tls_dir=$(prop tls_dir)
+    log=$(prop log)
+    [ -n "$listen" ] || listen=0.0.0.0:443
+    [ -n "$socket" ] || socket=$RUNDIR/mandraked.sock
+    [ -n "$db" ] || db=/var/mandrake/mandrake.db
+    [ -n "$tls_dir" ] || tls_dir=/etc/mandrake/tls
+    [ -n "$log" ] || log=info
+    exec "$DAEMON" \
+        --listen "$listen" \
+        --socket "$socket" \
+        --db "$db" \
+        --tls-dir "$tls_dir" \
+        --log "$log"
+    ;;
+*)
+    echo "usage: $0 setup|start" >&2
+    exit "$SMF_EXIT_ERR_CONFIG"
+    ;;
+esac

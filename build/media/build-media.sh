@@ -34,6 +34,10 @@ kayak=$repo/build/kayak
 : "${BUILDSEND_MP:=/kayak_image}" # kayak's fixed mountpoint
 : "${PKGURL:=$OMNIOS_PKGURL}"
 : "${PREBUILT_ILLUMOS:=}"
+# Local repository with the Mandrake packages (just build-packages). When it
+# holds system/mandrake/daemon the packages go onto the image (ADR-0010).
+: "${MANDRAKE_BUILD_REPO:=$repo/build/out/repo}"
+with_packages=0
 
 VERSION=$OMNIOS_RELEASE
 stem=mandrake-$MANDRAKE_VERSION-$OMNIOS_RELEASE
@@ -112,6 +116,14 @@ stage_overlays() {
     cp -p "$repo"/branding/loader/*.4th "$zfs/boot/forth/"
     cp -p "$repo/branding/loader/conf.d/mandrake" "$zfs/boot/conf.d/mandrake"
     cp -p "$here"/hooks/*.sh "$here/mandrake.env" "$zfs/.overlay-hooks/"
+    if [ -f "$MANDRAKE_BUILD_REPO/pkg5.repository" ] \
+        && pkgrepo list -s "$MANDRAKE_BUILD_REPO" -H system/mandrake/daemon >/dev/null 2>&1; then
+        with_packages=1
+        echo "MANDRAKE_BUILD_REPO=file://$MANDRAKE_BUILD_REPO/" > "$zfs/.overlay-hooks/build.env"
+        echo "Mandrake packages: from $MANDRAKE_BUILD_REPO"
+    else
+        echo "Mandrake packages: none found at $MANDRAKE_BUILD_REPO; building branded media only"
+    fi
 
     # Installer ramdisk (and so the ISO root): loader branding only, with
     # the install-media menu title.
@@ -171,6 +183,13 @@ verify_zfs() {
     grep -q Mandrake "$root/etc/motd" || die "/etc/motd is not branded"
     [ -f "$root/boot/conf.d/mandrake" ] || die "/boot/conf.d/mandrake missing"
     [ -f "$root/boot/forth/brand-mandrake.4th" ] || die "brand-mandrake.4th missing"
+    if ((with_packages)); then
+        pkg -R "$root" list -H system/mandrake/daemon system/mandrake/cli >/dev/null \
+            || die "Mandrake packages are not installed in the image; see the hook output above"
+        [ -f "$root/lib/svc/manifest/system/mandrake/mandraked.xml" ] || die "SMF manifest missing"
+        echo "Mandrake packages installed:"
+        pkg -R "$root" list -H system/mandrake/daemon system/mandrake/cli
+    fi
     pkg -R "$root" publisher
 }
 

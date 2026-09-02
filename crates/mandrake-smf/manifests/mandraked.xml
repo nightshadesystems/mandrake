@@ -1,0 +1,87 @@
+<?xml version="1.0"?>
+<!DOCTYPE service_bundle SYSTEM "/usr/share/lib/xml/dtd/service_bundle.dtd.1">
+<!--
+  Mandrake host management daemon (ADR-0010).
+
+  Two services: `setup` runs once as root to create the runtime directory
+  under /var/run, then `mandraked` runs as the dedicated `mandrake` user
+  with only the privileges it needs (net_privaddr for port 443).
+-->
+<service_bundle type="manifest" name="mandrake:mandraked">
+
+  <service name="system/mandrake/setup" type="service" version="1">
+    <create_default_instance enabled="true"/>
+    <single_instance/>
+
+    <dependency name="fs" grouping="require_all" restart_on="none" type="service">
+      <service_fmri value="svc:/system/filesystem/local:default"/>
+    </dependency>
+
+    <exec_method type="method" name="start"
+      exec="/lib/svc/method/svc-mandraked setup" timeout_seconds="30"/>
+    <exec_method type="method" name="stop" exec=":true" timeout_seconds="30"/>
+
+    <property_group name="startd" type="framework">
+      <propval name="duration" type="astring" value="transient"/>
+    </property_group>
+
+    <stability value="Unstable"/>
+    <template>
+      <common_name>
+        <loctext xml:lang="C">Mandrake runtime directory setup</loctext>
+      </common_name>
+    </template>
+  </service>
+
+  <service name="system/mandrake/mandraked" type="service" version="1">
+    <create_default_instance enabled="true"/>
+    <single_instance/>
+
+    <dependency name="setup" grouping="require_all" restart_on="none" type="service">
+      <service_fmri value="svc:/system/mandrake/setup:default"/>
+    </dependency>
+    <dependency name="network" grouping="require_all" restart_on="error" type="service">
+      <service_fmri value="svc:/milestone/network:default"/>
+    </dependency>
+    <dependency name="name-services" grouping="optional_all" restart_on="none" type="service">
+      <service_fmri value="svc:/milestone/name-services:default"/>
+    </dependency>
+
+    <exec_method type="method" name="start"
+      exec="/lib/svc/method/svc-mandraked start" timeout_seconds="60">
+      <method_context>
+        <method_credential user="mandrake" group="mandrake"
+          privileges="basic,net_privaddr"/>
+      </method_context>
+    </exec_method>
+    <exec_method type="method" name="stop" exec=":kill" timeout_seconds="30"/>
+
+    <property_group name="startd" type="framework">
+      <propval name="duration" type="astring" value="child"/>
+      <propval name="ignore_error" type="astring" value="core,signal"/>
+    </property_group>
+
+    <!-- Read by the method script and passed as flags; no config file. -->
+    <property_group name="config" type="application">
+      <propval name="listen" type="astring" value="0.0.0.0:443"/>
+      <propval name="socket" type="astring" value="/var/run/mandrake/mandraked.sock"/>
+      <propval name="db" type="astring" value="/var/mandrake/mandrake.db"/>
+      <propval name="tls_dir" type="astring" value="/etc/mandrake/tls"/>
+      <propval name="log" type="astring" value="info"/>
+    </property_group>
+
+    <stability value="Unstable"/>
+    <template>
+      <common_name>
+        <loctext xml:lang="C">Mandrake host management daemon</loctext>
+      </common_name>
+      <description>
+        <loctext xml:lang="C">
+          Serves the Mandrake HTTP API and web console over HTTPS and the
+          root recovery socket. See https://github.com/nightshadesystems/mandrake.
+        </loctext>
+      </description>
+    </template>
+  </service>
+
+</service_bundle>

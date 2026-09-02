@@ -92,8 +92,36 @@ overrides: `PKGURL` (OmniOS package source, for a local mirror),
 What the media contain and how Mandrake gets into them is in
 [build/media/README.md](../build/media/README.md) and ADR-0005.
 
-Still placeholders until Phase 2: `just build-packages`, `just publish-repo`,
-`just test-boot`.
+### Packages
+
+The Mandrake packages are built with the omnios-build framework from the
+recipes in [build/packages/](../build/packages/README.md), as the build
+user (omnios-build refuses root). Beyond the media tools above the build
+zone needs:
+
+```sh
+pkg install developer/omnios-build-tools ooce/developer/rust ooce/runtime/node-22
+```
+
+`ooce/*` packages come from the `extra.omnios` publisher, which the OmniOS
+installer configures by default. Cargo and pnpm fetch dependencies over
+the network during the build.
+
+```sh
+just build-packages          # build/out/repo: daemon, cli, incorporation
+just build-iso               # now installs those packages into the image
+just publish-repo DEST       # pkgrecv into another repository (path or http)
+```
+
+`build-media.sh` looks for `system/mandrake/daemon` in `build/out/repo`
+(override with `MANDRAKE_BUILD_REPO`). If it is there, a post-overlay hook
+installs the packages into the installed-system image and the verification
+step checks they landed; if not, the media are built branded-only as in
+Phase 1.
+
+Still a placeholder until Phase 6: `just test-boot`, because `mandraked`
+runs on the installed system and unattended installs need the kayak answer
+file from that phase.
 
 ## Test host
 
@@ -115,6 +143,25 @@ and exercising zones and VMs. Each phase ends with a demo here (spec §13).
 
    Both `omnios` and `nightshade.systems` are listed. `cat /etc/release`
    still says OmniOS, by design until Phase 2.
+
+### Phase 2 demo
+
+1. `just build-packages`, then `just build-iso`; install as in Phase 1.
+2. On first boot `svcs mandraked` shows `svc:/system/mandrake/mandraked:default`
+   online. The serial console and `svcs -L mandraked` show the console URL
+   and the certificate fingerprint.
+3. Create the first admin over the root socket:
+
+   ```sh
+   pfexec mandrakectl users create admin --role admin --password-stdin
+   ```
+
+4. Open `https://<host>/` in a browser, accept or pin the certificate, and
+   sign in as that admin. Create a second user under System → Users, then
+   open System → Audit log: the `user.create` entry names the admin as the
+   actor, and the dashboard's recent activity shows it live.
+5. From a workstation, `mandrakectl --server https://<host> --fingerprint <fp> --token <t> users list`
+   with a token created under the admin; `--json` for scripting.
 
 ## Test conventions
 

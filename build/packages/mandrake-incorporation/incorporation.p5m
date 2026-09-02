@@ -1,0 +1,10 @@
+set name=pkg.fmri value=pkg://$(PKGPUBLISHER)/incorporation/mandrake/mandrake-incorporation@$(MANDRAKE_VER),$(SUNOSVER)-$(PVER)
+set name=pkg.summary value="Mandrake package version incorporation"
+set name=pkg.description value="Pins the Mandrake packages to one release so they update together"
+set name=pkg.depend.install-hold value=core-os.mandrake
+set name=variant.opensolaris.zone value=global value=nonglobal
+set name=variant.opensolaris.imagetype value=full value=partial
+set name=org.opensolaris.consolidation value=mandrake
+depend fmri=pkg://$(PKGPUBLISHER)/system/mandrake/daemon@$(MANDRAKE_VER),$(SUNOSVER)-$(PVER) type=incorporate facet.version-lock.system/mandrake/daemon=true
+depend fmri=pkg://$(PKGPUBLISHER)/system/mandrake/cli@$(MANDRAKE_VER),$(SUNOSVER)-$(PVER) type=incorporate facet.version-lock.system/mandrake/cli=true
+license ../../../LICENSE license=MIT

@@ -104,4 +104,6 @@ jobs:
 
       # shellcheck is preinstalled on the Ubuntu runner image
       - name: shellcheck
-        run: git ls-files '*.sh' | xargs shellcheck -S style -x -P SCRIPTDIR
+        run: |
+          git ls-files '*.sh' | xargs shellcheck -S style -x -P SCRIPTDIR
+          shellcheck -s sh -S style crates/mandrake-smf/manifests/svc-mandraked

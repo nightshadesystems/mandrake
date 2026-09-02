@@ -2,9 +2,9 @@
 #
 # Workstation targets (any OS): vendor, build-crates, build-console, lint,
 # test, check-illumos, ci.
-# Build-host targets (OmniOS r151054, root): build-iso, build-usb, build-pxe,
-# build-media, init-repo. Placeholders until Phase 2: build-packages,
-# publish-repo, test-boot.
+# Build-host targets (OmniOS r151054): build-packages and publish-repo as the
+# build user; build-iso, build-usb, build-pxe, build-media, init-repo as root.
+# Placeholder until Phase 6: test-boot.
 
 set shell := ["bash", "-eu", "-o", "pipefail", "-c"]
 set windows-shell := ["bash", "-eu", "-o", "pipefail", "-c"]
@@ -59,6 +59,7 @@ lint-sh:
         exit 0
     fi
     git ls-files '*.sh' | xargs shellcheck -S style -x -P SCRIPTDIR
+    shellcheck -s sh -S style crates/mandrake-smf/manifests/svc-mandraked
 
 # Run unit tests for the host target; illumos-only tests are skipped here
 test:
@@ -120,14 +121,18 @@ build-pxe:
 init-repo *args:
     bash build/media/init-repo.sh {{args}}
 
-# Build IPS packages from build/packages/*/build.sh
-build-packages: (not-yet "build-packages" "2")
+# Build IPS packages into build/out/repo: build-packages [-r DIR] [PACKAGE...]
+build-packages *args:
+    bash build/packages/build-packages.sh {{args}}
 
-# Publish built packages to the nightshade.systems IPS repository
-publish-repo: (not-yet "publish-repo" "2")
+# Publish the build repository elsewhere: publish-repo [-s SRC] DEST
+publish-repo *args:
+    bash build/media/publish-repo.sh {{args}}
 
-# Boot the ISO under bhyve, wait for mandraked, run API smoke tests
-test-boot: (not-yet "test-boot" "2")
+# Boot the ISO under bhyve, wait for mandraked, run API smoke tests.
+# Needs the unattended installer (Phase 6): mandraked runs on the
+# installed system, not on the live media.
+test-boot: (not-yet "test-boot" "6")
 
 [private]
 not-yet target phase:

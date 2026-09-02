@@ -1,0 +1,8 @@
+Mandrake Management:solaris:cmd:::/usr/sbin/zonecfg:uid=0
+Mandrake Management:solaris:cmd:::/usr/sbin/zoneadm:uid=0
+Mandrake Management:solaris:cmd:::/usr/sbin/dladm:uid=0
+Mandrake Management:solaris:cmd:::/usr/sbin/ipadm:uid=0
+Mandrake Management:solaris:cmd:::/usr/sbin/zfs:uid=0
+Mandrake Management:solaris:cmd:::/usr/sbin/zpool:uid=0
+Mandrake Management:solaris:cmd:::/usr/sbin/beadm:uid=0
+Mandrake Management:solaris:cmd:::/usr/sbin/svcadm:uid=0

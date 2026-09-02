@@ -39,6 +39,14 @@ pub async fn run(cfg: Config) -> Result<(), RunError> {
     let db = Db::open(&cfg.db)?;
     tracing::info!(path = %cfg.db.display(), "database open");
     let state = AppState::new(db).await?;
+    match state.db.call(|conn| crate::jobs::recover(conn)).await {
+        Ok(n) if n > 0 => tracing::warn!(
+            jobs = n,
+            "marked jobs interrupted by the previous daemon as failed"
+        ),
+        Ok(_) => {}
+        Err(e) => tracing::warn!(error = %e, "job recovery failed"),
+    }
 
     let hostname = match cfg.hostname.clone() {
         Some(h) => h,

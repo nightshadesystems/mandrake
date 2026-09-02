@@ -1,5 +1,4 @@
-//! `/jobs`. Phase 2 has no job producers yet; the table and the read
-//! endpoints exist so later phases only add workers.
+//! `/jobs`: read-only view of the job table (`crate::jobs` runs them).
 
 use axum::{
     Json,
@@ -7,54 +6,18 @@ use axum::{
 };
 use mandrake_core::{
     Id, Role,
-    api::{Job, JobState, ObjectRef, Page},
+    api::{Job, JobState, Page},
 };
-use rusqlite::{OptionalExtension, params};
+use rusqlite::params;
 use serde::Deserialize;
 
 use crate::{
     app::AppState,
     auth::Auth,
     cursor::{self, Pagination},
-    db,
     error::{ApiError, ApiResult},
+    jobs,
 };
-
-const COLUMNS: &str = "seq, id, state, kind, target_kind, target_id, target_name, progress, message, created_at, started_at, finished_at, error";
-
-fn from_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<(i64, Job)> {
-    let state: String = r.get("state")?;
-    let target_kind: Option<String> = r.get("target_kind")?;
-    Ok((
-        r.get("seq")?,
-        Job {
-            id: db::get_id(r, "id")?,
-            state: match state.as_str() {
-                "queued" => JobState::Queued,
-                "running" => JobState::Running,
-                "succeeded" => JobState::Succeeded,
-                "cancelled" => JobState::Cancelled,
-                _ => JobState::Failed,
-            },
-            kind: r.get("kind")?,
-            target: target_kind
-                .map(|kind| -> rusqlite::Result<ObjectRef> {
-                    Ok(ObjectRef {
-                        kind,
-                        id: db::get_opt_id(r, "target_id")?,
-                        name: r.get("target_name")?,
-                    })
-                })
-                .transpose()?,
-            progress: r.get("progress")?,
-            message: r.get("message")?,
-            created_at: db::get_ts(r, "created_at")?,
-            started_at: db::get_opt_ts(r, "started_at")?,
-            finished_at: db::get_opt_ts(r, "finished_at")?,
-            error: db::get_opt_json(r, "error")?.and_then(|v| serde_json::from_value(v).ok()),
-        },
-    ))
-}
 
 /// `GET /jobs` query.
 #[derive(Debug, Default, Deserialize)]
@@ -87,11 +50,13 @@ pub async fn list(
     let rows = state
         .db
         .call(move |conn| {
-            let sql = format!(
-                "SELECT {COLUMNS} FROM jobs WHERE seq < ?1 AND (?2 IS NULL OR state = ?2) ORDER BY seq DESC LIMIT ?3"
-            );
-            let mut stmt = conn.prepare(&sql)?;
-            let rows = stmt.query_map(params![after, wanted, i64::from(limit) + 1], from_row)?;
+            let mut stmt = conn.prepare(
+                "SELECT seq, id, state, kind, target_kind, target_id, target_name, progress, \
+                 message, created_at, started_at, finished_at, error FROM jobs \
+                 WHERE seq < ?1 AND (?2 IS NULL OR state = ?2) ORDER BY seq DESC LIMIT ?3",
+            )?;
+            let rows =
+                stmt.query_map(params![after, wanted, i64::from(limit) + 1], jobs::from_row)?;
             rows.collect::<rusqlite::Result<Vec<_>>>()
         })
         .await?;
@@ -109,16 +74,6 @@ pub async fn get_one(
     Path(id): Path<Id>,
 ) -> ApiResult<Json<Job>> {
     auth.require(Role::Viewer)?;
-    let job = state
-        .db
-        .call(move |conn| {
-            conn.query_row(
-                &format!("SELECT {COLUMNS} FROM jobs WHERE id = ?1"),
-                [id.to_string()],
-                |r| from_row(r).map(|(_, j)| j),
-            )
-            .optional()
-        })
-        .await?;
+    let job = state.db.call(move |conn| jobs::find(conn, id)).await?;
     job.map(Json).ok_or_else(|| ApiError::not_found("job"))
 }

@@ -22,6 +22,7 @@ pub mod error;
 pub mod events;
 pub mod host;
 pub mod idempotency;
+pub mod jobs;
 pub mod routes;
 pub mod serve;
 #[cfg(unix)]

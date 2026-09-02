@@ -341,3 +341,30 @@ pub struct SystemResources {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sampled_at: Option<Timestamp>,
 }
+
+/// Per-object metadata held in SQLite, not in illumos (ADR-0002).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Metadata {
+    /// Display name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    /// Description.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// Tags.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tags: Option<Vec<String>>,
+    /// Notes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notes: Option<String>,
+}
+
+impl Metadata {
+    /// Whether nothing is set.
+    pub fn is_empty(&self) -> bool {
+        self.display_name.is_none()
+            && self.description.is_none()
+            && self.tags.is_none()
+            && self.notes.is_none()
+    }
+}

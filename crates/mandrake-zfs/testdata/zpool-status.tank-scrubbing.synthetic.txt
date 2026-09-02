@@ -1,0 +1,19 @@
+  pool: tank
+ state: DEGRADED
+status: One or more devices are faulted in response to persistent errors.
+	Sufficient replicas exist for the pool to continue functioning in a
+	degraded state.
+action: Replace the faulted device, or use 'zpool clear' to mark the device
+	repaired.
+  scan: scrub in progress since Tue Sep  1 22:10:03 2026
+	1.23G scanned out of 4.56G at 100M/s, 0h0m to go
+	0 repaired, 26.97% done
+config:
+
+	NAME        STATE     READ WRITE CKSUM
+	tank        DEGRADED     0     0     0
+	  mirror-0  DEGRADED     0     0     0
+	    c1t1d0  ONLINE       0     0     0
+	    c1t2d0  FAULTED     12     0     0  too many errors
+
+errors: No known data errors

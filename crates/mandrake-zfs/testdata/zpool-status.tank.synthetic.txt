@@ -1,0 +1,21 @@
+  pool: tank
+ state: ONLINE
+  scan: scrub repaired 0 in 0h42m with 0 errors on Tue Sep  1 03:12:44 2026
+config:
+
+	NAME        STATE     READ WRITE CKSUM
+	tank        ONLINE       0     0     0
+	  mirror-0  ONLINE       0     0     0
+	    c1t1d0  ONLINE       0     0     0
+	    c1t2d0  ONLINE       0     0     0
+	  mirror-1  ONLINE       0     0     0
+	    c1t3d0  ONLINE       0     0     0
+	    c1t4d0  ONLINE       0     0     0
+	logs
+	  c2t0d0    ONLINE       0     0     0
+	cache
+	  c2t1d0    ONLINE       0     0     0
+	spares
+	  c1t5d0    AVAIL
+
+errors: No known data errors

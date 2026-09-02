@@ -1471,7 +1471,7 @@ A disk as `diskinfo` reports it
 
 ### PoolHealth
 
-Type: `ONLINE` \| `DEGRADED` \| `FAULTED` \| `OFFLINE` \| `UNAVAIL` \| `REMOVED` \| `SUSPENDED`
+Type: `ONLINE` \| `DEGRADED` \| `FAULTED` \| `OFFLINE` \| `UNAVAIL` \| `REMOVED` \| `SUSPENDED` \| `AVAIL` \| `INUSE`
 
 ### VdevType
 

@@ -2048,7 +2048,7 @@ components:
 
     PoolHealth:
       type: string
-      enum: [ONLINE, DEGRADED, FAULTED, OFFLINE, UNAVAIL, REMOVED, SUSPENDED]
+      enum: [ONLINE, DEGRADED, FAULTED, OFFLINE, UNAVAIL, REMOVED, SUSPENDED, AVAIL, INUSE]
 
     VdevType:
       type: string

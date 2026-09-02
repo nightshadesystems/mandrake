@@ -12,6 +12,7 @@ pub mod id;
 pub mod problem;
 pub mod role;
 pub mod shell;
+pub mod storage;
 pub mod timestamp;
 
 pub use actor::{Actor, Via};

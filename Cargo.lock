@@ -1096,6 +1096,14 @@ version = "0.1.0"
 [[package]]
 name = "mandrake-zfs"
 version = "0.1.0"
+dependencies = [
+ "mandrake-core",
+ "serde",
+ "thiserror",
+ "time",
+ "tokio",
+ "tracing",
+]
 
 [[package]]
 name = "mandrake-zones"

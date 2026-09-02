@@ -32,9 +32,13 @@ hosts) still need a C compiler for the target, so the recipe uses `clang`
 with the illumos sysroot from `github.com/illumos/sysroot`, fetched on
 first use into `~/.cache/mandrake/illumos-sysroot` by
 `build/cross/illumos-sysroot.sh`. Install LLVM to get `clang` and
-`llvm-ar`; on Windows the recipe also looks in `C:Program Fileslvm`.
-a full cross-link for fast iteration is set up when the first driver crate
-needs it.
+`llvm-ar`; on Windows the recipe also looks in `C:/Program Files/LLVM`.
+
+A full cross-compile to illumos binaries works on Linux with a GCC cross
+toolchain: `just toolchain-illumos` builds it once (about half an hour,
+into `~/.cache/mandrake/illumos-toolchain`), then `just build-illumos`
+produces release binaries under `target/x86_64-unknown-illumos/`. The
+build workflow does the same in CI (see Continuous integration).
 
 ### Vendored forks
 
@@ -179,8 +183,20 @@ and exercising zones and VMs. Each phase ends with a demo here (spec §13).
 
 ## Continuous integration
 
-`.github/workflows/ci.yml` runs on every push and pull request on an Ubuntu
-runner: Rust format check, clippy with warnings as errors, build, test,
-illumos type-check; console lint and build; shellcheck over every shell
-script. GitHub has no illumos runner, so integration tests and media builds
-are not in CI; they run on the build host.
+`.github/workflows/ci.yml` is the gate: on every push and pull request an
+Ubuntu runner does the Rust format check, clippy with warnings as errors,
+build, test, and illumos type-check; console lint, typecheck, and build;
+the API docs staleness check; and shellcheck over every script.
+
+`.github/workflows/build.yml` produces artifacts on pushes to `main`, on
+`v*` tags, and on demand: the built console, Linux host binaries for smoke
+tests, and cross-compiled illumos binaries with the SMF files in a
+versioned tarball. The illumos job builds a GCC cross toolchain with
+`build/cross/illumos-toolchain.sh` (a port of what Rust's own CI does) the
+first time, about half an hour, and restores it from the cache after that.
+Those illumos binaries bundle SQLite because the sysroot has none; they are
+for smoke testing, not what the ISO ships (ADR-0009).
+
+GitHub has no illumos runner, so packages, media, and integration tests
+stay on the build host. A self-hosted runner on that host would let CI run
+`just build-packages` and `just build-iso` too.

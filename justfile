@@ -91,6 +91,24 @@ check-illumos:
 # What CI runs
 ci: lint build test check-illumos check-api-docs
 
+# Build the illumos cross toolchain on Linux (build/cross/illumos-toolchain.sh)
+toolchain-illumos *args:
+    bash build/cross/illumos-toolchain.sh all {{args}}
+
+# Cross-compile release binaries for illumos on Linux with that toolchain
+build-illumos:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    prefix=${MANDRAKE_ILLUMOS_TOOLCHAIN:-$HOME/.cache/mandrake/illumos-toolchain}
+    [ -x "$prefix/bin/x86_64-illumos-gcc" ] || { echo "build-illumos: no toolchain at $prefix; run just toolchain-illumos" >&2; exit 1; }
+    export PATH="$prefix/bin:$PATH"
+    export CC_x86_64_unknown_illumos=x86_64-illumos-gcc
+    export CXX_x86_64_unknown_illumos=x86_64-illumos-g++
+    export AR_x86_64_unknown_illumos=x86_64-illumos-ar
+    export RANLIB_x86_64_unknown_illumos=x86_64-illumos-ranlib
+    export CARGO_TARGET_X86_64_UNKNOWN_ILLUMOS_LINKER=x86_64-illumos-gcc
+    cargo build --release --workspace --target {{illumos_target}} --features mandraked/bundled-sqlite
+
 # Regenerate docs/api.md from api/openapi.yaml
 gen-api-docs:
     cd {{console_dir}} && pnpm install --frozen-lockfile && pnpm gen-api-docs

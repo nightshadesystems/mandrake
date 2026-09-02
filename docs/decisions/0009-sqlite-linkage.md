@@ -31,6 +31,10 @@ back or keep the newer daemon.
 ## Consequences
 
 - `cargo check --target x86_64-unknown-illumos` needs no C toolchain.
+- The GitHub build workflow cross-compiles illumos binaries on Linux with a
+  sysroot that has no `libsqlite3`, so those artifacts enable the
+  `bundled-sqlite` feature. They are smoke-test downloads; the packages on
+  the media still link the system library.
 - SQLite fixes reach the appliance through `pkg update`, and the version
   is whatever the pinned OmniOS release ships (3.4x for r151054).
 - The database file lives on `rpool/mandrake/var` (spec §6.1), a dataset

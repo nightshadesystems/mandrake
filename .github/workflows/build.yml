@@ -1,0 +1,150 @@
+# Build artifacts: the console, Linux host binaries for smoke tests, and
+# cross-compiled illumos binaries. Separate from ci.yml so the lint gate
+# stays fast; the illumos job builds a GCC cross toolchain the first time
+# (about half an hour) and restores it from the cache afterwards.
+#
+# The illumos binaries bundle SQLite because the 2018 sysroot carries no
+# libsqlite3; packages built on the OmniOS build host link the system
+# library (ADR-0009). These artifacts are for smoke testing and download,
+# not what the ISO ships.
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  console:
+    name: console
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: console/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: console/pnpm-lock.yaml
+      - name: build
+        working-directory: console
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: console-dist
+          path: console/dist
+          if-no-files-found: error
+
+  linux:
+    name: linux x86_64 (smoke)
+    runs-on: ubuntu-latest
+    needs: console
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: console-dist
+          path: console/dist
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@v2
+      - name: build
+        run: cargo build --release --workspace
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mandrake-linux-x86_64
+          path: |
+            target/release/mandraked
+            target/release/mandrakectl
+          if-no-files-found: error
+
+  illumos:
+    name: illumos x86_64
+    runs-on: ubuntu-latest
+    needs: console
+    # GCC 8.4 needs a host compiler of its era; 20.04 ships GCC 9.
+    container: ubuntu:20.04
+    env:
+      TOOLCHAIN: /opt/illumos-toolchain
+      DEBIAN_FRONTEND: noninteractive
+    steps:
+      - name: host packages
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential curl ca-certificates git xz-utils bzip2 \
+            libgmp-dev libmpfr-dev libmpc-dev pkg-config
+
+      - uses: actions/checkout@v4
+
+      - name: toolchain cache
+        id: toolchain
+        uses: actions/cache@v4
+        with:
+          path: /opt/illumos-toolchain
+          key: illumos-toolchain-${{ runner.os }}-${{ hashFiles('build/cross/illumos-toolchain.sh') }}
+
+      - name: build toolchain
+        if: steps.toolchain.outputs.cache-hit != 'true'
+        run: bash build/cross/illumos-toolchain.sh all "$TOOLCHAIN"
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+          targets: x86_64-unknown-illumos
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: illumos
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: console-dist
+          path: console/dist
+
+      - name: cross build
+        env:
+          CC_x86_64_unknown_illumos: x86_64-illumos-gcc
+          CXX_x86_64_unknown_illumos: x86_64-illumos-g++
+          AR_x86_64_unknown_illumos: x86_64-illumos-ar
+          RANLIB_x86_64_unknown_illumos: x86_64-illumos-ranlib
+          CARGO_TARGET_X86_64_UNKNOWN_ILLUMOS_LINKER: x86_64-illumos-gcc
+        run: |
+          export PATH="$TOOLCHAIN/bin:$PATH"
+          cargo build --release --workspace --target x86_64-unknown-illumos \
+            --features mandraked/bundled-sqlite
+          x86_64-illumos-strip target/x86_64-unknown-illumos/release/mandraked \
+            target/x86_64-unknown-illumos/release/mandrakectl
+          file target/x86_64-unknown-illumos/release/mandraked || true
+
+      - name: stage
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          out=mandrake-$version-illumos-x86_64
+          mkdir -p "dist/$out"
+          cp target/x86_64-unknown-illumos/release/mandraked \
+             target/x86_64-unknown-illumos/release/mandrakectl "dist/$out/"
+          cp crates/mandrake-smf/manifests/mandraked.xml \
+             crates/mandrake-smf/manifests/svc-mandraked "dist/$out/"
+          (cd dist && tar -czf "$out.tar.gz" "$out" && sha256sum "$out.tar.gz" > "$out.tar.gz.sha256")
+          echo "ARTIFACT=$out" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT }}
+          path: |
+            dist/*.tar.gz
+            dist/*.sha256
+          if-no-files-found: error

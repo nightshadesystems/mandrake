@@ -40,6 +40,13 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 uuid = { workspace = true }
 
+[features]
+default = []
+# Compile SQLite in even on illumos. Only for cross builds on hosts whose
+# illumos sysroot has no libsqlite3 (the build workflow); packages built on
+# the OmniOS build host keep the system library (ADR-0009).
+bundled-sqlite = ["rusqlite/bundled"]
+
 # ADR-0009: the OmniOS libsqlite3 on illumos, a bundled copy elsewhere.
 [target.'cfg(target_os = "illumos")'.dependencies]
 rusqlite = { workspace = true }

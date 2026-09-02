@@ -167,6 +167,46 @@ and exercising zones and VMs. Each phase ends with a demo here (spec §13).
 5. From a workstation, `mandrakectl --server https://<host> --fingerprint <fp> --token <t> users list`
    with a token created under the admin; `--json` for scripting.
 
+### Phase 3 demo
+
+1. Rebuild and install as in Phase 2, or `pkg update` from the publisher.
+2. Capture real tool output once, so the parsers are tested against this
+   host rather than the synthetic samples:
+
+   ```sh
+   pfexec build/tools/capture-testdata.sh all
+   ```
+
+   Copy the `crates/*/testdata/` files it wrote into the repo, delete the
+   `*.synthetic.txt` counterparts, and run `cargo test`.
+3. In the console open Storage → Devices to see the free disks, then Pools
+   → New pool: name `tank`, one mirror of two free disks, ashift auto.
+   Expand the row: the vdev tree shows the mirror with both disks ONLINE.
+   Start a scrub from the row menu and watch the progress label. On the
+   host, `zpool status tank` shows the same layout and scan.
+4. Open Network → Topology. Create an aggregation over two free ports (not
+   the one carrying the management address; it is marked MGMT and refuses),
+   then a VLAN on the aggregation, an etherstub, and a VNIC on the
+   etherstub, each from the details card of the link beneath it. The
+   topology redraws after every step. On the host, `dladm show-aggr`,
+   `dladm show-vlan`, and `dladm show-vnic` agree with the picture.
+5. Try to delete the management port or its address: the API answers 403
+   `protected`. Delete the etherstub while the VNIC exists: 409 `busy`.
+6. The same from the CLI:
+
+   ```sh
+   mandrakectl storage pools list
+   mandrakectl storage datasets create tank/vms --compression lz4
+   mandrakectl storage datasets create tank/vms/disk0 --size 20G --sparse
+   mandrakectl storage snapshots create tank/vms base --recursive
+   mandrakectl network links list
+   mandrakectl network vnics create vnic1 --over stub0 --vid 20
+   mandrakectl network routes create 10.20.0.0/16 192.168.1.1
+   ```
+
+   Every mutation lands in System → Audit log with the actor and the
+   before/after summary.
+
 ## Test conventions
 
 - Parsers are unit-tested against captured real output in

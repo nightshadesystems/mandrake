@@ -79,6 +79,12 @@ pub enum Command {
     /// Long-running jobs.
     #[command(subcommand)]
     Jobs(JobsCmd),
+    /// Pools, datasets, volumes, snapshots, disks.
+    #[command(subcommand)]
+    Storage(StorageCmd),
+    /// Links, addresses, routes.
+    #[command(subcommand)]
+    Network(NetworkCmd),
 }
 
 /// Paging flags shared by list commands.
@@ -257,6 +263,461 @@ pub enum JobsCmd {
     /// Show one job (GET /jobs/{id}).
     Get {
         /// Job id.
+        id: Id,
+    },
+}
+
+/// Metadata flags shared by create and update commands.
+#[derive(Debug, Args, Default)]
+pub struct MetadataArgs {
+    /// Display name.
+    #[arg(long)]
+    pub display_name: Option<String>,
+    /// Description.
+    #[arg(long)]
+    pub description: Option<String>,
+    /// A tag; repeat for several.
+    #[arg(long = "tag")]
+    pub tags: Vec<String>,
+    /// Free-form notes.
+    #[arg(long)]
+    pub notes: Option<String>,
+}
+
+/// `storage` subcommands.
+#[derive(Debug, Subcommand)]
+pub enum StorageCmd {
+    /// Disks and their pool membership (GET /storage/devices).
+    Devices,
+    /// ZFS pools.
+    #[command(subcommand)]
+    Pools(PoolsCmd),
+    /// Filesystems and volumes.
+    #[command(subcommand)]
+    Datasets(DatasetsCmd),
+    /// Volumes only (GET /storage/volumes).
+    Volumes {
+        /// Only this pool.
+        #[arg(long)]
+        pool: Option<String>,
+        #[command(flatten)]
+        paging: Paging,
+    },
+    /// Snapshots.
+    #[command(subcommand)]
+    Snapshots(SnapshotsCmd),
+}
+
+/// `storage pools` subcommands.
+#[derive(Debug, Subcommand)]
+pub enum PoolsCmd {
+    /// List pools (GET /storage/pools).
+    List {
+        #[command(flatten)]
+        paging: Paging,
+    },
+    /// Show one pool with its vdev tree (GET /storage/pools/{id}).
+    Get {
+        /// Pool id.
+        id: Id,
+    },
+    /// Create a pool (POST /storage/pools). Operator.
+    Create {
+        /// Pool name.
+        name: String,
+        /// A vdev as TYPE:DEV[,DEV...]; TYPE is stripe, mirror, raidz1,
+        /// raidz2, raidz3, log, cache, or spare. Repeat for several.
+        #[arg(long = "vdev", required = true)]
+        vdevs: Vec<String>,
+        /// Sector shift (9, 12, 13); default auto.
+        #[arg(long)]
+        ashift: Option<u32>,
+        /// Root dataset compression; default lz4.
+        #[arg(long)]
+        compression: Option<String>,
+        /// Overwrite disks that carry a foreign label.
+        #[arg(long)]
+        force: bool,
+        #[command(flatten)]
+        metadata: MetadataArgs,
+    },
+    /// Change metadata (PATCH /storage/pools/{id}). Operator.
+    Update {
+        /// Pool id.
+        id: Id,
+        #[command(flatten)]
+        metadata: MetadataArgs,
+    },
+    /// Destroy a pool and everything on it (DELETE /storage/pools/{id}). Admin.
+    Destroy {
+        /// Pool id.
+        id: Id,
+        /// The pool name, echoed as a safeguard.
+        #[arg(long)]
+        name: String,
+    },
+    /// Start a scrub and print the job (POST /storage/pools/{id}/scrub). Operator.
+    Scrub {
+        /// Pool id.
+        id: Id,
+        /// Stop the running scrub instead.
+        #[arg(long)]
+        stop: bool,
+    },
+}
+
+/// `storage datasets` subcommands.
+#[derive(Debug, Subcommand)]
+pub enum DatasetsCmd {
+    /// List datasets (GET /storage/datasets).
+    List {
+        /// Only this pool.
+        #[arg(long)]
+        pool: Option<String>,
+        /// Only children of this dataset.
+        #[arg(long)]
+        parent: Option<String>,
+        /// filesystem or volume.
+        #[arg(long, value_parser = ["filesystem", "volume"])]
+        kind: Option<String>,
+        #[command(flatten)]
+        paging: Paging,
+    },
+    /// Show one dataset (GET /storage/datasets/{id}).
+    Get {
+        /// Dataset id.
+        id: Id,
+    },
+    /// Create a filesystem, or a volume with --size (POST /storage/datasets). Operator.
+    Create(DatasetCreateArgs),
+    /// Change properties or metadata (PATCH /storage/datasets/{id}). Operator.
+    Update(DatasetUpdateArgs),
+    /// Destroy a dataset (DELETE /storage/datasets/{id}). Operator.
+    Destroy {
+        /// Dataset id.
+        id: Id,
+        /// Also destroy children and snapshots.
+        #[arg(long)]
+        recursive: bool,
+    },
+}
+
+/// Flags of `storage datasets create`.
+#[derive(Debug, Args)]
+pub struct DatasetCreateArgs {
+    /// Full name, pool/path.
+    pub name: String,
+    /// Volume size (10G, 512M, or bytes); makes a volume.
+    #[arg(long)]
+    pub size: Option<String>,
+    /// Thin-provision the volume.
+    #[arg(long, requires = "size")]
+    pub sparse: bool,
+    /// Volume block size.
+    #[arg(long, requires = "size")]
+    pub volblocksize: Option<String>,
+    /// Compression (lz4, zstd, gzip, off).
+    #[arg(long)]
+    pub compression: Option<String>,
+    /// Quota.
+    #[arg(long)]
+    pub quota: Option<String>,
+    /// Reservation.
+    #[arg(long)]
+    pub reservation: Option<String>,
+    /// Mountpoint (filesystems).
+    #[arg(long, conflicts_with = "size")]
+    pub mountpoint: Option<String>,
+    /// Record size (filesystems).
+    #[arg(long, conflicts_with = "size")]
+    pub recordsize: Option<String>,
+    /// Do not update access times.
+    #[arg(long, conflicts_with = "size")]
+    pub no_atime: bool,
+    /// Create missing parents.
+    #[arg(long)]
+    pub parents: bool,
+    #[command(flatten)]
+    pub metadata: MetadataArgs,
+}
+
+/// Flags of `storage datasets update`.
+#[derive(Debug, Args)]
+pub struct DatasetUpdateArgs {
+    /// Dataset id.
+    pub id: Id,
+    /// New volume size; volumes only grow.
+    #[arg(long)]
+    pub size: Option<String>,
+    /// Compression.
+    #[arg(long)]
+    pub compression: Option<String>,
+    /// Quota; `none` removes it.
+    #[arg(long)]
+    pub quota: Option<String>,
+    /// Reservation; `none` removes it.
+    #[arg(long)]
+    pub reservation: Option<String>,
+    /// Mountpoint.
+    #[arg(long)]
+    pub mountpoint: Option<String>,
+    /// Update access times: true or false.
+    #[arg(long)]
+    pub atime: Option<bool>,
+    #[command(flatten)]
+    pub metadata: MetadataArgs,
+}
+
+/// `storage snapshots` subcommands.
+#[derive(Debug, Subcommand)]
+pub enum SnapshotsCmd {
+    /// List snapshots (GET /storage/snapshots).
+    List {
+        /// Only this dataset.
+        #[arg(long)]
+        dataset: Option<String>,
+        /// Include descendants of --dataset.
+        #[arg(long, requires = "dataset")]
+        recursive: bool,
+        #[command(flatten)]
+        paging: Paging,
+    },
+    /// Show one snapshot (GET /storage/snapshots/{id}).
+    Get {
+        /// Snapshot id.
+        id: Id,
+    },
+    /// Take a snapshot (POST /storage/snapshots). Operator.
+    Create {
+        /// Dataset to snapshot.
+        dataset: String,
+        /// The part after @.
+        name: String,
+        /// Snapshot every descendant too.
+        #[arg(long)]
+        recursive: bool,
+        #[command(flatten)]
+        metadata: MetadataArgs,
+    },
+    /// Destroy a snapshot (DELETE /storage/snapshots/{id}). Operator.
+    Destroy {
+        /// Snapshot id.
+        id: Id,
+    },
+    /// Roll the dataset back to a snapshot (POST /storage/snapshots/{id}/rollback). Operator.
+    Rollback {
+        /// Snapshot id.
+        id: Id,
+        /// Also destroy newer snapshots.
+        #[arg(long)]
+        discard_newer: bool,
+    },
+    /// Clone a snapshot into a new dataset (POST /storage/snapshots/{id}/clone). Operator.
+    Clone {
+        /// Snapshot id.
+        id: Id,
+        /// Full name of the new dataset.
+        target: String,
+    },
+}
+
+/// `network` subcommands.
+#[derive(Debug, Subcommand)]
+pub enum NetworkCmd {
+    /// Every datalink.
+    #[command(subcommand)]
+    Links(LinksCmd),
+    /// Link aggregations.
+    #[command(subcommand)]
+    Aggrs(AggrsCmd),
+    /// VLANs.
+    #[command(subcommand)]
+    Vlans(VlansCmd),
+    /// Etherstubs (virtual switches).
+    #[command(subcommand)]
+    Etherstubs(EtherstubsCmd),
+    /// VNICs.
+    #[command(subcommand)]
+    Vnics(VnicsCmd),
+    /// IP addresses.
+    #[command(subcommand)]
+    Addresses(AddressesCmd),
+    /// Routes.
+    #[command(subcommand)]
+    Routes(RoutesCmd),
+}
+
+/// `network links` subcommands.
+#[derive(Debug, Subcommand)]
+pub enum LinksCmd {
+    /// List links with what they sit over (GET /network/links).
+    List,
+    /// Show one link (GET /network/links/{id}).
+    Get {
+        /// Link id.
+        id: Id,
+    },
+    /// Change MTU or metadata (PATCH /network/links/{id}). Operator.
+    Update {
+        /// Link id.
+        id: Id,
+        /// New MTU (576-9216).
+        #[arg(long)]
+        mtu: Option<u32>,
+        #[command(flatten)]
+        metadata: MetadataArgs,
+    },
+}
+
+/// `network aggrs` subcommands.
+#[derive(Debug, Subcommand)]
+pub enum AggrsCmd {
+    /// Create an aggregation (POST /network/aggrs). Operator.
+    Create {
+        /// Link name, ending in a digit.
+        name: String,
+        /// A physical port; repeat for several.
+        #[arg(long = "port", required = true)]
+        ports: Vec<String>,
+        /// L2, L3, L4, or a combination; default L4.
+        #[arg(long)]
+        policy: Option<String>,
+        /// off, active, or passive; default active.
+        #[arg(long, value_parser = ["off", "active", "passive"])]
+        lacp: Option<String>,
+        /// short or long; default short.
+        #[arg(long, value_parser = ["short", "long"])]
+        timer: Option<String>,
+        #[command(flatten)]
+        metadata: MetadataArgs,
+    },
+    /// Delete an aggregation (DELETE /network/aggrs/{id}). Operator.
+    Delete {
+        /// Link id.
+        id: Id,
+    },
+}
+
+/// `network vlans` subcommands.
+#[derive(Debug, Subcommand)]
+pub enum VlansCmd {
+    /// Create a VLAN (POST /network/vlans). Operator.
+    Create {
+        /// Link name, ending in a digit.
+        name: String,
+        /// VLAN id (1-4094).
+        #[arg(long)]
+        vid: u16,
+        /// Physical link or aggregation beneath it.
+        #[arg(long)]
+        over: String,
+        #[command(flatten)]
+        metadata: MetadataArgs,
+    },
+    /// Delete a VLAN (DELETE /network/vlans/{id}). Operator.
+    Delete {
+        /// Link id.
+        id: Id,
+    },
+}
+
+/// `network etherstubs` subcommands.
+#[derive(Debug, Subcommand)]
+pub enum EtherstubsCmd {
+    /// Create an etherstub (POST /network/etherstubs). Operator.
+    Create {
+        /// Link name, ending in a digit.
+        name: String,
+        #[command(flatten)]
+        metadata: MetadataArgs,
+    },
+    /// Delete an etherstub (DELETE /network/etherstubs/{id}). Operator.
+    Delete {
+        /// Link id.
+        id: Id,
+    },
+}
+
+/// `network vnics` subcommands.
+#[derive(Debug, Subcommand)]
+pub enum VnicsCmd {
+    /// Create a VNIC (POST /network/vnics). Operator.
+    Create {
+        /// Link name, ending in a digit.
+        name: String,
+        /// Physical link, aggregation, or etherstub beneath it.
+        #[arg(long)]
+        over: String,
+        /// Pin a MAC address; default chosen by the system.
+        #[arg(long)]
+        mac: Option<String>,
+        /// VLAN tag (1-4094).
+        #[arg(long)]
+        vid: Option<u16>,
+        /// MTU (576-9216).
+        #[arg(long)]
+        mtu: Option<u32>,
+        #[command(flatten)]
+        metadata: MetadataArgs,
+    },
+    /// Delete a VNIC (DELETE /network/vnics/{id}). Operator.
+    Delete {
+        /// Link id.
+        id: Id,
+    },
+}
+
+/// `network addresses` subcommands.
+#[derive(Debug, Subcommand)]
+pub enum AddressesCmd {
+    /// List address objects (GET /network/addresses).
+    List,
+    /// Show one address (GET /network/addresses/{id}).
+    Get {
+        /// Address id.
+        id: Id,
+    },
+    /// Add an address to a link (POST /network/addresses). Operator.
+    Create {
+        /// Link name; the IP interface is created when missing.
+        interface: String,
+        /// static, dhcp, or addrconf.
+        #[arg(long, value_parser = ["static", "dhcp", "addrconf"])]
+        kind: String,
+        /// The address with prefix length (static).
+        #[arg(long)]
+        address: Option<String>,
+        /// The part after / in the address object name; default v4 or v6.
+        #[arg(long)]
+        alias: Option<String>,
+        /// Do not persist across reboot.
+        #[arg(long)]
+        temporary: bool,
+        #[command(flatten)]
+        metadata: MetadataArgs,
+    },
+    /// Remove an address (DELETE /network/addresses/{id}). Operator.
+    Delete {
+        /// Address id.
+        id: Id,
+    },
+}
+
+/// `network routes` subcommands.
+#[derive(Debug, Subcommand)]
+pub enum RoutesCmd {
+    /// List the routing table (GET /network/routes).
+    List,
+    /// Add a persistent static route (POST /network/routes). Operator.
+    Create {
+        /// default, or a network with prefix length.
+        destination: String,
+        /// Gateway address.
+        gateway: String,
+    },
+    /// Remove a static route (DELETE /network/routes/{id}). Operator.
+    Delete {
+        /// Route id.
         id: Id,
     },
 }

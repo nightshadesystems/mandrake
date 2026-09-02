@@ -54,6 +54,8 @@ pub async fn run(cli: Cli) -> Result<(), Error> {
         Command::Tokens(cmd) => tokens(&client, cmd, json).await?,
         Command::Audit(cmd) => audit(&client, cmd, json).await?,
         Command::Jobs(cmd) => jobs(&client, cmd, json).await?,
+        Command::Storage(cmd) => crate::storage::run(&client, cmd, json).await?,
+        Command::Network(cmd) => crate::network::run(&client, cmd, json).await?,
     }
     Ok(())
 }
@@ -68,7 +70,7 @@ impl From<serde_json::Error> for Error {
 }
 
 /// Fetch one page, or every page with `--all`.
-async fn pages<T: serde::de::DeserializeOwned>(
+pub(crate) async fn pages<T: serde::de::DeserializeOwned>(
     client: &Client,
     path: &str,
     base_query: &[(&str, String)],
@@ -497,7 +499,7 @@ async fn jobs(client: &Client, cmd: JobsCmd, json: bool) -> Result<(), Error> {
     Ok(())
 }
 
-fn done(json: bool, what: &str, id: Id) {
+pub(crate) fn done(json: bool, what: &str, id: Id) {
     if json {
         output::json(&json!({ "id": id, "result": what }));
     } else {

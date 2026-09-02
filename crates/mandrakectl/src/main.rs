@@ -13,7 +13,9 @@
 mod cli;
 mod client;
 mod cmd;
+mod network;
 mod output;
+mod storage;
 
 use std::process::ExitCode;
 

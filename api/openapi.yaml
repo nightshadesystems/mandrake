@@ -10,14 +10,21 @@ info:
 
     Conventions: plural nouns, UUID identifiers, cursor pagination,
     `Idempotency-Key` on POST, `202` with a Job for long operations, RFC 7807
-    problem details for errors.
+    problem details for errors. Timestamps are RFC 3339 in UTC.
 
-    The same API is also served on the Unix socket
-    `/var/run/mandrake/mandraked.sock`, where root is trusted without auth
+    Authentication (ADR-0007): a session cookie issued by `POST /auth/login`
+    for the console, or a bearer token for API and CLI use. Requests that
+    mutate state and are authenticated by cookie must also send the header
+    `X-Mandrake-Request: 1`. The same API is served on the Unix socket
+    `/var/run/mandrake/mandraked.sock`, where uid 0 is trusted without auth
     so `mandrakectl` works for recovery with no network (spec §9).
 
-    Phase 0 stub. Only `GET /system` is defined; every resource family has a
-    tag so later phases fill in paths under it.
+    Roles: `viewer` reads; `operator` also mutates infrastructure; `admin`
+    also manages users, tokens, and the system. Each operation lists the
+    minimum role in its description.
+
+    Phase 2 surface: `health`, `auth`, `system`, `users`, `tokens`, `audit`,
+    `jobs`, `events`. Later families have tags but no paths yet.
   license:
     name: MIT
     identifier: MIT
@@ -37,8 +44,22 @@ security:
   - bearerToken: []
 
 tags:
+  - name: health
+    description: Liveness, unauthenticated
+  - name: auth
+    description: Console login, logout, and the current session
   - name: system
     description: Host identity, time, resources, boot environments
+  - name: users
+    description: Local users and roles
+  - name: tokens
+    description: API bearer tokens
+  - name: audit
+    description: Audit log of mutating calls
+  - name: jobs
+    description: Long-running operations
+  - name: events
+    description: Event stream over WebSocket
   - name: network
     description: "Crossbow objects: links, vnics, aggrs, vlans, etherstubs, addresses, routes"
   - name: storage
@@ -49,30 +70,486 @@ tags:
     description: Native and lx zones
   - name: vms
     description: bhyve virtual machines and console proxies
-  - name: jobs
-    description: Long-running operations
-  - name: events
-    description: Event stream over WebSocket
-  - name: users
-    description: Local users and roles
-  - name: tokens
-    description: API bearer tokens
-  - name: audit
-    description: Audit log of mutating calls
 
 paths:
+  /health:
+    get:
+      tags: [health]
+      operationId: getHealth
+      summary: Liveness check
+      description: Returns 204 when the daemon is serving. No authentication, no body.
+      security: []
+      responses:
+        "204":
+          description: Alive
+
+  /auth/login:
+    post:
+      tags: [auth]
+      operationId: login
+      summary: Log in with username and password
+      description: |
+        Issues a session cookie. Five failures within fifteen minutes lock
+        the user for fifteen minutes; ten attempts a minute from one address
+        are rate limited.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Logged in; the session cookie is set
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+              description: "`mandrake_session=...; HttpOnly; Secure; SameSite=Strict; Path=/`"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "423":
+          description: User locked after repeated failures
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      operationId: logout
+      summary: End the current session
+      description: Deletes the session behind the cookie. Bearer tokens are not affected.
+      parameters:
+        - $ref: "#/components/parameters/CsrfHeader"
+      responses:
+        "204":
+          description: Session ended; the cookie is cleared
+        "401":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /auth/session:
+    get:
+      tags: [auth]
+      operationId: getSession
+      summary: The current actor
+      description: Works for sessions, tokens, and the root socket. Any role.
+      responses:
+        "200":
+          description: Current actor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "401":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
   /system:
     get:
       tags: [system]
       operationId: getSystem
-      summary: Host summary
+      summary: Host identity
+      description: Any role.
       responses:
         "200":
-          description: Host summary
+          description: Host identity
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/SystemInfo"
+        "401":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /system/resources:
+    get:
+      tags: [system]
+      operationId: getSystemResources
+      summary: CPU, memory, and load
+      description: Point-in-time figures for dashboard gauges. Any role.
+      responses:
+        "200":
+          description: Resource figures
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemResources"
+        "401":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /users:
+    get:
+      tags: [users]
+      operationId: listUsers
+      summary: List users
+      description: Any role.
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Page of users
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserList"
+        "401":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+    post:
+      tags: [users]
+      operationId: createUser
+      summary: Create a user
+      description: Role `admin`.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserCreate"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "409":
+          description: Username already exists
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /users/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [users]
+      operationId: getUser
+      summary: Get a user
+      description: Any role.
+      responses:
+        "200":
+          description: The user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "404":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+    patch:
+      tags: [users]
+      operationId: updateUser
+      summary: Update a user
+      description: |
+        Role `admin`. An admin cannot remove their own `admin` role or
+        disable themselves; the last enabled admin cannot be disabled.
+      parameters:
+        - $ref: "#/components/parameters/CsrfHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "422":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      tags: [users]
+      operationId: deleteUser
+      summary: Delete a user
+      description: |
+        Role `admin`. Ends the user's sessions and revokes their tokens.
+        Audit rows keep the username. The last enabled admin cannot be
+        deleted, nor can the caller delete themselves.
+      parameters:
+        - $ref: "#/components/parameters/CsrfHeader"
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          $ref: "#/components/responses/Problem"
+        "422":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /users/{id}/password:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    put:
+      tags: [users]
+      operationId: setUserPassword
+      summary: Set a user's password
+      description: |
+        Any role for one's own account, with `current_password` required.
+        Role `admin` for any account, without `current_password`. Ends every
+        other session of that user.
+      parameters:
+        - $ref: "#/components/parameters/CsrfHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordChange"
+      responses:
+        "204":
+          description: Password changed
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "422":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /tokens:
+    get:
+      tags: [tokens]
+      operationId: listTokens
+      summary: List tokens
+      description: |
+        Any role lists their own tokens. Role `admin` may pass `user_id` to
+        list another user's. Secrets are never returned.
+      parameters:
+        - name: user_id
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/Id"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Page of tokens
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenList"
+        "401":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+    post:
+      tags: [tokens]
+      operationId: createToken
+      summary: Create a token
+      description: |
+        Any role creates a token for themselves; role `admin` may set
+        `user_id` to create one for another user. The secret is returned
+        once, in this response only.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TokenCreate"
+      responses:
+        "201":
+          description: Created; `secret` is shown only here
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenCreated"
+        "422":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /tokens/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [tokens]
+      operationId: getToken
+      summary: Get a token's metadata
+      description: Owner or role `admin`.
+      responses:
+        "200":
+          description: The token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Token"
+        "404":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      tags: [tokens]
+      operationId: deleteToken
+      summary: Revoke a token
+      description: Owner or role `admin`. Takes effect immediately.
+      parameters:
+        - $ref: "#/components/parameters/CsrfHeader"
+      responses:
+        "204":
+          description: Revoked
+        "404":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /audit:
+    get:
+      tags: [audit]
+      operationId: listAudit
+      summary: List audit entries, newest first
+      description: Any role. Entries are immutable.
+      parameters:
+        - name: actor_id
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/Id"
+        - name: object_id
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/Id"
+        - name: action
+          in: query
+          required: false
+          description: Exact action name, for example `user.create`
+          schema:
+            type: string
+        - name: since
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: until
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Page of audit entries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditList"
+        "401":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /jobs:
+    get:
+      tags: [jobs]
+      operationId: listJobs
+      summary: List jobs, newest first
+      description: Any role.
+      parameters:
+        - name: state
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/JobState"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Page of jobs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobList"
+        "401":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /jobs/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [jobs]
+      operationId: getJob
+      summary: Get a job
+      description: Any role.
+      responses:
+        "200":
+          description: The job
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "404":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /events:
+    get:
+      tags: [events]
+      operationId: streamEvents
+      summary: Event stream (WebSocket)
+      description: |
+        Upgrade to a WebSocket. Each text frame from the server is one
+        `Event` as JSON. Authenticate with the session cookie or with the
+        bearer token in the `Authorization` header of the upgrade request.
+        Optional `since` replays events with a greater id first. Any role.
+        Clients send nothing; pings are handled by the protocol.
+      parameters:
+        - name: since
+          in: query
+          required: false
+          description: Event id to resume after
+          schema:
+            type: string
+      responses:
+        "101":
+          description: Switching Protocols
         "401":
           $ref: "#/components/responses/Problem"
         default:
@@ -84,21 +561,38 @@ components:
       type: apiKey
       in: cookie
       name: mandrake_session
-      description: Console session issued at login
+      description: Console session issued at login (ADR-0007)
     bearerToken:
       type: http
       scheme: bearer
-      description: API token for CLI and automation; hashed at rest
+      description: "API token `mdk_...` for CLI and automation; hashed at rest"
 
   parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/Id"
     IdempotencyKey:
       name: Idempotency-Key
       in: header
       required: false
-      description: Client-chosen key; a repeat POST with the same key returns the original result
+      description: |
+        Client-chosen key, scoped to the actor, kept 24 hours. A repeat with
+        the same key and body returns the original response; a different
+        body returns 422.
       schema:
         type: string
         maxLength: 128
+    CsrfHeader:
+      name: X-Mandrake-Request
+      in: header
+      required: false
+      description: Must be `1` on mutating requests authenticated by the session cookie
+      schema:
+        type: string
+        enum: ["1"]
     Cursor:
       name: cursor
       in: query
@@ -123,6 +617,17 @@ components:
         application/problem+json:
           schema:
             $ref: "#/components/schemas/Problem"
+    TooManyRequests:
+      description: Rate limited
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+          description: Seconds until the next attempt is accepted
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
     Accepted:
       description: Operation started; poll the job or watch the event stream
       content:
@@ -136,9 +641,22 @@ components:
       format: uuid
       description: Globally unique object identifier, stored in illumos alongside the object
 
+    Timestamp:
+      type: string
+      format: date-time
+      description: RFC 3339, UTC
+
+    Role:
+      type: string
+      enum: [admin, operator, viewer]
+
     Problem:
       type: object
-      description: RFC 7807 problem details
+      description: |
+        RFC 7807 problem details. `type` is `about:blank` for plain HTTP
+        errors, or `https://mandrake.nightshade.systems/problems/<slug>` for
+        application errors such as `invalid-credentials`, `locked`,
+        `idempotency-mismatch`, `last-admin`.
       required: [type, title, status]
       properties:
         type:
@@ -154,6 +672,9 @@ components:
         instance:
           type: string
           format: uri
+        request_id:
+          type: string
+          description: Matches the daemon log and the audit row
 
     Page:
       type: object
@@ -167,6 +688,242 @@ components:
           type: [string, "null"]
           description: Pass as cursor to fetch the next page; null on the last page
 
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          minLength: 1
+          maxLength: 64
+        password:
+          type: string
+          minLength: 1
+          maxLength: 1024
+          format: password
+
+    Actor:
+      type: object
+      description: Who is acting. `root` over the socket has no user id.
+      required: [username, role, via]
+      properties:
+        id:
+          $ref: "#/components/schemas/Id"
+        username:
+          type: string
+        role:
+          $ref: "#/components/schemas/Role"
+        via:
+          type: string
+          enum: [session, token, socket]
+        token_id:
+          $ref: "#/components/schemas/Id"
+
+    Session:
+      type: object
+      required: [actor]
+      properties:
+        actor:
+          $ref: "#/components/schemas/Actor"
+        expires_at:
+          $ref: "#/components/schemas/Timestamp"
+        idle_expires_at:
+          $ref: "#/components/schemas/Timestamp"
+
+    User:
+      type: object
+      required: [id, username, role, disabled, created_at, updated_at]
+      properties:
+        id:
+          $ref: "#/components/schemas/Id"
+        username:
+          type: string
+        role:
+          $ref: "#/components/schemas/Role"
+        display_name:
+          type: string
+        disabled:
+          type: boolean
+        locked_until:
+          type: [string, "null"]
+          format: date-time
+          description: Set while the user is locked out after failed logins
+        last_login_at:
+          type: [string, "null"]
+          format: date-time
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+        updated_at:
+          $ref: "#/components/schemas/Timestamp"
+
+    UserCreate:
+      type: object
+      required: [username, password, role]
+      properties:
+        username:
+          type: string
+          pattern: "^[a-z_][a-z0-9_.-]{0,31}$"
+          description: Lowercase, starts with a letter or underscore, at most 32 characters
+        password:
+          type: string
+          minLength: 12
+          maxLength: 1024
+          format: password
+        role:
+          $ref: "#/components/schemas/Role"
+        display_name:
+          type: string
+          maxLength: 128
+
+    UserUpdate:
+      type: object
+      description: Every field optional; omitted fields are unchanged
+      properties:
+        role:
+          $ref: "#/components/schemas/Role"
+        display_name:
+          type: string
+          maxLength: 128
+        disabled:
+          type: boolean
+
+    PasswordChange:
+      type: object
+      required: [new_password]
+      properties:
+        current_password:
+          type: string
+          format: password
+          description: Required when changing one's own password
+        new_password:
+          type: string
+          minLength: 12
+          maxLength: 1024
+          format: password
+
+    UserList:
+      allOf:
+        - $ref: "#/components/schemas/Page"
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/User"
+
+    Token:
+      type: object
+      required: [id, user_id, name, prefix, created_at]
+      properties:
+        id:
+          $ref: "#/components/schemas/Id"
+        user_id:
+          $ref: "#/components/schemas/Id"
+        name:
+          type: string
+        prefix:
+          type: string
+          description: First eight characters of the secret after `mdk_`, for identification
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+        expires_at:
+          type: [string, "null"]
+          format: date-time
+        last_used_at:
+          type: [string, "null"]
+          format: date-time
+
+    TokenCreate:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+        user_id:
+          $ref: "#/components/schemas/Id"
+        expires_in_seconds:
+          type: [integer, "null"]
+          minimum: 60
+          description: Omit or null for a token that does not expire
+
+    TokenCreated:
+      allOf:
+        - $ref: "#/components/schemas/Token"
+        - type: object
+          required: [secret]
+          properties:
+            secret:
+              type: string
+              description: "The full bearer token `mdk_...`; shown once"
+
+    TokenList:
+      allOf:
+        - $ref: "#/components/schemas/Page"
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/Token"
+
+    ObjectRef:
+      type: object
+      description: The object an audit entry or event is about
+      required: [kind]
+      properties:
+        kind:
+          type: string
+          description: Resource family singular, for example `user`, `token`, `vm`, `system`
+        id:
+          $ref: "#/components/schemas/Id"
+        name:
+          type: string
+
+    AuditEntry:
+      type: object
+      required: [id, at, actor, action, object, result]
+      properties:
+        id:
+          type: string
+          description: Monotonic; usable as an audit cursor
+        at:
+          $ref: "#/components/schemas/Timestamp"
+        actor:
+          $ref: "#/components/schemas/Actor"
+        action:
+          type: string
+          description: "`<kind>.<verb>`, for example `user.create`, `token.revoke`, `auth.login`"
+        object:
+          $ref: "#/components/schemas/ObjectRef"
+        before:
+          type: [object, "null"]
+          description: Summary of the object before the call; secrets never appear
+        after:
+          type: [object, "null"]
+          description: Summary of the object after the call
+        result:
+          type: string
+          enum: [ok, denied, failed]
+        detail:
+          type: string
+        request_id:
+          type: string
+        source:
+          type: string
+          description: Client address, or `socket`
+
+    AuditList:
+      allOf:
+        - $ref: "#/components/schemas/Page"
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/AuditEntry"
+
     JobState:
       type: string
       enum: [queued, running, succeeded, failed, cancelled]
@@ -174,7 +931,7 @@ components:
     Job:
       type: object
       description: A long-running operation; returned with 202
-      required: [id, state, created_at]
+      required: [id, state, kind, created_at]
       properties:
         id:
           $ref: "#/components/schemas/Id"
@@ -184,7 +941,7 @@ components:
           type: string
           description: Operation family, for example image.import or vm.create
         target:
-          $ref: "#/components/schemas/Id"
+          $ref: "#/components/schemas/ObjectRef"
         progress:
           type: number
           minimum: 0
@@ -192,13 +949,46 @@ components:
         message:
           type: string
         created_at:
-          type: string
+          $ref: "#/components/schemas/Timestamp"
+        started_at:
+          type: [string, "null"]
           format: date-time
         finished_at:
           type: [string, "null"]
           format: date-time
         error:
           $ref: "#/components/schemas/Problem"
+
+    JobList:
+      allOf:
+        - $ref: "#/components/schemas/Page"
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/Job"
+
+    Event:
+      type: object
+      description: One frame on the event stream
+      required: [id, at, kind]
+      properties:
+        id:
+          type: string
+          description: Monotonic; pass as `since` to resume
+        at:
+          $ref: "#/components/schemas/Timestamp"
+        kind:
+          type: string
+          description: "`<kind>.<verb>` as in audit actions, plus `job.progress`"
+        object:
+          $ref: "#/components/schemas/ObjectRef"
+        actor:
+          $ref: "#/components/schemas/Actor"
+        data:
+          type: object
+          description: Kind-specific payload, for example the Job for `job.*`
 
     Metadata:
       type: object
@@ -217,10 +1007,15 @@ components:
 
     SystemInfo:
       type: object
-      required: [hostname, version, omnios_release, uptime_seconds]
+      required: [id, hostname, product, version, omnios_release, boot_environment, uptime_seconds, time]
       properties:
+        id:
+          $ref: "#/components/schemas/Id"
         hostname:
           type: string
+        product:
+          type: string
+          const: mandrake
         version:
           type: string
           description: Mandrake release version
@@ -233,3 +1028,35 @@ components:
         uptime_seconds:
           type: integer
           minimum: 0
+        time:
+          $ref: "#/components/schemas/Timestamp"
+        timezone:
+          type: string
+          examples: [UTC]
+
+    SystemResources:
+      type: object
+      required: [cpus, load_avg, memory]
+      properties:
+        cpus:
+          type: integer
+          minimum: 1
+        load_avg:
+          type: array
+          description: 1, 5, and 15 minute load averages
+          items:
+            type: number
+          minItems: 3
+          maxItems: 3
+        memory:
+          type: object
+          required: [total_bytes, free_bytes]
+          properties:
+            total_bytes:
+              type: integer
+              minimum: 0
+            free_bytes:
+              type: integer
+              minimum: 0
+        sampled_at:
+          $ref: "#/components/schemas/Timestamp"

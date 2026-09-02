@@ -18,6 +18,7 @@ just build-console    # pnpm install + build in console/
 just lint             # cargo fmt --check, clippy pedantic, eslint, prettier, shellcheck
 just test             # cargo test --workspace, host target
 just check-illumos    # cargo check --target x86_64-unknown-illumos
+just gen-api-docs     # regenerate docs/api.md from api/openapi.yaml
 ```
 
 `check-illumos` type-checks against the illumos `std` without linking, so it

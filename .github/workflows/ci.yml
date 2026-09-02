@@ -81,6 +81,9 @@ jobs:
       - name: typecheck
         run: pnpm typecheck
 
+      - name: api docs up to date
+        run: pnpm check-api-docs
+
       - name: build
         run: pnpm build
 

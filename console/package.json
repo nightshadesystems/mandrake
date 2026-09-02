@@ -15,11 +15,20 @@
     "preview": "vite preview",
     "typecheck": "tsc -b",
     "lint": "eslint . && prettier --check .",
+    "gen-client": "openapi-typescript ../api/openapi.yaml -o src/api/schema.d.ts",
+    "gen-api-docs": "node scripts/gen-api-docs.mjs",
+    "check-api-docs": "node scripts/gen-api-docs.mjs --check",
     "format": "prettier --write ."
   },
   "dependencies": {
+    "@clr/icons": "^13.0.2",
+    "@fontsource/archivo": "^5.3.0",
+    "@fontsource/ibm-plex-mono": "^5.3.0",
+    "@tanstack/react-query": "^5.102.8",
+    "openapi-fetch": "^0.17.0",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.8",
+    "react-router": "^8.3.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.0",
@@ -32,9 +41,11 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.5",
     "globals": "^17.12.0",
+    "openapi-typescript": "^7.13.0",
     "prettier": "^3.9.6",
     "typescript": "^6.0.0",
     "typescript-eslint": "^8.69.0",
-    "vite": "^8.2.2"
+    "vite": "^8.2.2",
+    "yaml": "^2.9.0"
   }
 }

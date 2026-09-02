@@ -69,10 +69,15 @@ check-illumos:
     cargo check --workspace --all-targets --target {{illumos_target}}
 
 # What CI runs
-ci: lint build test check-illumos
+ci: lint build test check-illumos check-api-docs
 
 # Regenerate docs/api.md from api/openapi.yaml
-gen-api-docs: (not-yet "gen-api-docs" "2")
+gen-api-docs:
+    cd {{console_dir}} && pnpm install --frozen-lockfile && pnpm gen-api-docs
+
+# Fail if docs/api.md is out of date with api/openapi.yaml
+check-api-docs:
+    cd {{console_dir}} && pnpm install --frozen-lockfile && pnpm check-api-docs
 
 # ----------------------------------------------------------------- build host
 

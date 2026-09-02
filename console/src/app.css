@@ -195,3 +195,138 @@
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   gap: 4px 16px;
 }
+
+.field-note {
+  color: var(--cds-alias-typography-color-300);
+  font-size: 13px;
+  margin: 8px 0 0;
+}
+.button-column {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+/* Network topology */
+.topology-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 16px;
+  align-items: start;
+}
+@media (max-width: 960px) {
+  .topology-layout {
+    grid-template-columns: 1fr;
+  }
+}
+.topology-canvas {
+  overflow: auto;
+  border: 1px solid var(--cds-alias-object-border-color);
+  border-radius: 8px;
+  background: var(--cds-alias-object-container-background);
+  min-height: 240px;
+}
+.topology-canvas svg {
+  display: block;
+  margin: 0 auto;
+}
+.topo-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--cds-alias-typography-color-300);
+}
+.topo-legend .legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-left: 10px;
+}
+.topo-legend .legend-dot.state-up {
+  background: var(--cds-alias-status-success);
+}
+.topo-legend .legend-dot.state-down {
+  background: var(--cds-alias-status-danger);
+}
+.topo-legend .legend-pill {
+  margin-left: 10px;
+  padding: 0 6px;
+  border-radius: 8px;
+  font-family: var(--cds-alias-typography-monospace-font-family);
+  font-size: 10px;
+  background: var(--ns-accent-soft);
+  color: var(--ns-accent);
+}
+.topo-edge {
+  fill: none;
+  stroke: var(--cds-alias-object-border-color-shade);
+  stroke-width: 1.5;
+}
+.topo-edge.selected {
+  stroke: var(--ns-accent);
+  stroke-width: 2;
+}
+.topo-node {
+  cursor: pointer;
+}
+.topo-node:focus {
+  outline: none;
+}
+.topo-node rect {
+  fill: var(--cds-alias-object-container-background-tint);
+  stroke: var(--cds-alias-object-border-color);
+  stroke-width: 1;
+}
+.topo-node:hover rect,
+.topo-node:focus rect {
+  stroke: var(--ns-accent-border);
+}
+.topo-node.selected rect {
+  stroke: var(--ns-accent);
+  stroke-width: 2;
+}
+.topo-node.kind-phys rect {
+  fill: var(--cds-alias-object-container-background-shade);
+}
+.topo-node.kind-etherstub rect {
+  stroke-dasharray: 4 3;
+}
+.topo-node text {
+  fill: var(--cds-alias-typography-color-450);
+  font-size: 12px;
+  pointer-events: none;
+}
+.topo-node text.name {
+  font-family: var(--cds-alias-typography-monospace-font-family);
+  font-weight: 600;
+}
+.topo-node text.kind,
+.topo-node text.sub {
+  fill: var(--cds-alias-typography-color-300);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+}
+.topo-node text.sub {
+  font-family: var(--cds-alias-typography-monospace-font-family);
+}
+.topo-node circle.state-up {
+  fill: var(--cds-alias-status-success);
+}
+.topo-node circle.state-down {
+  fill: var(--cds-alias-status-danger);
+}
+.topo-node circle.state-unknown {
+  fill: var(--cds-alias-status-neutral);
+}
+.topo-node rect.mgmt {
+  fill: var(--ns-accent-soft);
+  stroke: none;
+}
+.topo-node text.mgmt {
+  fill: var(--ns-accent);
+  font-size: 9px;
+  font-family: var(--cds-alias-typography-monospace-font-family);
+  font-weight: 600;
+}

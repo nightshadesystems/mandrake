@@ -1,12 +1,6 @@
-// Helpers every storage tab uses: error text, size parsing, metadata
-// drafts. Components live in shared.tsx so fast refresh stays intact.
+// Storage-specific helpers; the metadata and error helpers are shared.
 
-import { ApiError } from '../../api/client.ts';
-import type { Metadata } from '../../api/storage.ts';
-
-export function problem(error: unknown): string {
-  return error instanceof ApiError ? error.message : 'Request failed.';
-}
+export { emptyMetadata, metadataBody, problem, type MetadataDraft } from '../common/util.ts';
 
 const UNITS: Record<string, number> = {
   k: 1024,
@@ -30,22 +24,4 @@ export function parseSize(text: string): number | undefined {
 export function sizeFieldError(text: string): string | undefined {
   if (text.trim() === '') return undefined;
   return parseSize(text) === undefined ? 'Use a size such as 10G, 512M, or bytes' : undefined;
-}
-
-export interface MetadataDraft {
-  display_name: string;
-  description: string;
-}
-
-export function emptyMetadata(m?: Metadata | null): MetadataDraft {
-  return { display_name: m?.display_name ?? '', description: m?.description ?? '' };
-}
-
-/** The draft as a request body, or undefined when nothing is set. */
-export function metadataBody(d: MetadataDraft): Metadata | undefined {
-  const body: Metadata = {
-    ...(d.display_name.trim() ? { display_name: d.display_name.trim() } : {}),
-    ...(d.description.trim() ? { description: d.description.trim() } : {}),
-  };
-  return Object.keys(body).length > 0 ? body : undefined;
 }

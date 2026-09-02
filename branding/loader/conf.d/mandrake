@@ -1,0 +1,10 @@
+# Mandrake loader branding. Installed as /boot/conf.d/mandrake.
+#
+# The loader reads /boot/defaults/loader.conf, then loader_conf_files
+# (/boot/loader.conf, /boot/loader.conf.local), then every file in
+# /boot/conf.d in lexicographic order. This file therefore overrides the
+# menu title that kayak writes into loader.conf.local on install media,
+# without any change to kayak.
+loader_brand="mandrake"
+loader_logo="mandrake"
+loader_menu_title="Welcome to Mandrake"

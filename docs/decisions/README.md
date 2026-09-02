@@ -13,3 +13,6 @@ Use [0000-template.md](0000-template.md) for new records.
 | [0001](0001-overlay-not-fork.md) | Overlay an IPS publisher on OmniOS rather than fork it | Accepted |
 | [0002](0002-illumos-source-of-truth-sqlite-metadata.md) | Illumos is the source of truth; SQLite holds only metadata | Accepted |
 | [0003](0003-shell-out-drivers.md) | Drivers shell out to illumos tooling | Accepted |
+| [0004](0004-vendor-forks-as-submodules.md) | Vendor the build-system forks as git submodules on release branches | Accepted |
+| [0005](0005-media-customisation-via-kayak-overlays.md) | Customise install media through kayak overlays, not kayak changes | Accepted |
+| [0006](0006-nightshade-publisher.md) | The nightshade.systems publisher: name, origin, and signing | Accepted |

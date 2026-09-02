@@ -1,0 +1,39 @@
+From b7e5bb7560c26c5dc1a79abbf37ecae77241d882 Mon Sep 17 00:00:00 2001
+From: Andy Fiddaman <illumos@fiddaman.net>
+Date: Sun, 30 Nov 2025 14:35:43 +0000
+Subject: [PATCH] Fix custom overlay parameters
+
+---
+ build/miniroot | 2 +-
+ build/zfs_send | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/build/miniroot b/build/miniroot
+index d02545e..f2dfe2b 100755
+--- a/build/miniroot
++++ b/build/miniroot
+@@ -423,7 +423,7 @@ function step_copy {
+         cp $KYKDIR/etc/anon.dtrace.conf $WORKDIR/mnt/kernel/drv/dtrace.conf
+     fi
+ 
+-    apply_custom_overlay $MINIROOT_CUSTOM_OVERLAY $WORKDIR/mnt
++    apply_custom_overlay "$MINIROOT_CUSTOM_OVERLAY" "$WORKDIR/mnt"
+ 
+     chkpt umount
+ }
+diff --git a/build/zfs_send b/build/zfs_send
+index efcfdee..c06efd6 100755
+--- a/build/zfs_send
++++ b/build/zfs_send
+@@ -267,7 +267,7 @@ if [ "$VARIANT" = nonglobal ]; then
+     sed -i -e 's%^root::%root:$5$kr1VgdIt$OUiUAyZCDogH/uaxH71rMeQxvpDEY2yX.x0ZQRnmeb9:%' $MP/etc/shadow
+ fi
+ 
+-apply_custom_overlay $ZFS_CUSTOM_OVERLAY $MP
++apply_custom_overlay "$ZFS_CUSTOM_OVERLAY" "$MP"
+ 
+ note "Creating compressed stream"
+ zfs snapshot $ZDATASET@kayak || fail "snap"
+-- 
+2.47.1.windows.1
+

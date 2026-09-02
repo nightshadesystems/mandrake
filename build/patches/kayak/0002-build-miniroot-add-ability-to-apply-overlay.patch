@@ -1,0 +1,37 @@
+From dd822c77f7c89e0c373d3f073797ac2425de8ffe Mon Sep 17 00:00:00 2001
+From: Alexey Romanov <romanov.alexey2000@gmail.com>
+Date: Wed, 5 Nov 2025 10:17:00 +0300
+Subject: [PATCH] build: miniroot: add ability to apply overlay
+
+For custom builds, it is sometimes necessary to be
+able to add your own files to the image.
+
+Signed-off-by: Alexey Romanov <romanov.alexey2000@gmail.com>
+---
+ build/miniroot | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/build/miniroot b/build/miniroot
+index dc41186..d02545e 100755
+--- a/build/miniroot
++++ b/build/miniroot
+@@ -23,6 +23,7 @@ SRCDIR=`dirname $0`
+ KYKDIR=$SRCDIR/..
+ 
+ . $KYKDIR/lib/defs.sh
++. $SRCDIR/../lib/utils.sh
+ 
+ fail() {
+     echo "ERROR: $*" >&2
+@@ -422,6 +423,8 @@ function step_copy {
+         cp $KYKDIR/etc/anon.dtrace.conf $WORKDIR/mnt/kernel/drv/dtrace.conf
+     fi
+ 
++    apply_custom_overlay $MINIROOT_CUSTOM_OVERLAY $WORKDIR/mnt
++
+     chkpt umount
+ }
+ 
+-- 
+2.47.1.windows.1
+

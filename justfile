@@ -1,9 +1,10 @@
 # Mandrake task runner. See docs/build.md for which targets run where.
 #
-# Workstation targets (any OS): build-crates, build-console, lint, test,
-# check-illumos, ci.
-# Build-host targets (OmniOS build zone): build-packages, publish-repo,
-# build-iso, build-usb, build-pxe, test-boot. Placeholders until Phase 1.
+# Workstation targets (any OS): vendor, build-crates, build-console, lint,
+# test, check-illumos, ci.
+# Build-host targets (OmniOS r151054, root): build-iso, build-usb, build-pxe,
+# build-media, init-repo. Placeholders until Phase 2: build-packages,
+# publish-repo, test-boot.
 
 set shell := ["bash", "-eu", "-o", "pipefail", "-c"]
 set windows-shell := ["bash", "-eu", "-o", "pipefail", "-c"]
@@ -16,6 +17,10 @@ default:
     @just --list --unsorted
 
 # ---------------------------------------------------------------- workstation
+
+# Initialise the vendored fork submodules (handles the Windows quirks)
+vendor:
+    bash build/vendor.sh
 
 # Build every Rust crate for the host target
 build-crates:
@@ -34,7 +39,7 @@ fmt:
     cd {{console_dir}} && pnpm install --frozen-lockfile && pnpm format
 
 # Lint everything; fails on any warning
-lint: lint-rust lint-console
+lint: lint-rust lint-console lint-sh
 
 # rustfmt check and clippy pedantic with warnings denied
 lint-rust:
@@ -44,6 +49,16 @@ lint-rust:
 # ESLint, Prettier check, and tsc
 lint-console:
     cd {{console_dir}} && pnpm install --frozen-lockfile && pnpm lint && pnpm typecheck
+
+# shellcheck every tracked shell script (skips, loudly, if shellcheck is absent)
+lint-sh:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! command -v shellcheck >/dev/null; then
+        echo "lint-sh: shellcheck not installed, skipping" >&2
+        exit 0
+    fi
+    git ls-files '*.sh' | xargs shellcheck -S style -x -P SCRIPTDIR
 
 # Run unit tests for the host target; illumos-only tests are skipped here
 test:
@@ -61,20 +76,31 @@ gen-api-docs: (not-yet "gen-api-docs" "2")
 
 # ----------------------------------------------------------------- build host
 
+# Build install media: build-media [-n] [-o DIR] zfs|miniroot|iso|usb|pxe|all|clean
+build-media *args:
+    bash build/media/build-media.sh {{args}}
+
+# Assemble the BIOS+UEFI hybrid ISO into build/out
+build-iso:
+    bash build/media/build-media.sh iso
+
+# Assemble the dd-able USB image into build/out (builds the ISO first)
+build-usb:
+    bash build/media/build-media.sh usb
+
+# Assemble the PXE tarball into build/out
+build-pxe:
+    bash build/media/build-media.sh pxe
+
+# Create the empty nightshade.systems IPS repository: init-repo [-s PORT] [DIR]
+init-repo *args:
+    bash build/media/init-repo.sh {{args}}
+
 # Build IPS packages from build/packages/*/build.sh
-build-packages: (not-yet "build-packages" "1")
+build-packages: (not-yet "build-packages" "2")
 
 # Publish built packages to the nightshade.systems IPS repository
-publish-repo: (not-yet "publish-repo" "1")
-
-# Assemble the BIOS+UEFI hybrid ISO
-build-iso: (not-yet "build-iso" "1")
-
-# Assemble the dd-able USB image
-build-usb: (not-yet "build-usb" "1")
-
-# Assemble the PXE tarball: unix, miniroot, answer-file
-build-pxe: (not-yet "build-pxe" "1")
+publish-repo: (not-yet "publish-repo" "2")
 
 # Boot the ISO under bhyve, wait for mandraked, run API smoke tests
 test-boot: (not-yet "test-boot" "2")

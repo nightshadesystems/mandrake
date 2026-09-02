@@ -32,6 +32,7 @@ Requires stable Rust with the `x86_64-unknown-illumos` target, Node 22 with
 pnpm, and [`just`](https://github.com/casey/just).
 
 ```sh
+just vendor          # fork submodules, once per clone
 just build-crates    # cargo build --workspace
 just build-console   # pnpm install && pnpm build in console/
 just lint            # fmt check, clippy pedantic, eslint, prettier

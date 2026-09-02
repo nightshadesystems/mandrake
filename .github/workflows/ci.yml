@@ -83,3 +83,13 @@ jobs:
 
       - name: build
         run: pnpm build
+
+  shell:
+    name: shell
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # shellcheck is preinstalled on the Ubuntu runner image
+      - name: shellcheck
+        run: git ls-files '*.sh' | xargs shellcheck -S style -x -P SCRIPTDIR

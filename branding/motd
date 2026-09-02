@@ -1,0 +1,7 @@
+
+  Mandrake hypervisor OS, by Nightshade Systems.
+  Built on OmniOS Community Edition (https://omnios.org).
+
+  Management console: see the URL and certificate fingerprint printed on
+  the serial console at boot. Run `mandrakectl` for recovery and scripting.
+

@@ -1,0 +1,37 @@
+From 26c7019156ed9e75585bf4e8c0c379ecc1ac11cc Mon Sep 17 00:00:00 2001
+From: Alexey Romanov <romanov.alexey2000@gmail.com>
+Date: Tue, 11 Nov 2025 12:09:25 +0000
+Subject: [PATCH] build: zfs_send: add ability to apply overlay
+
+For custom builds, it is sometimes necessary to be
+able to add your own file to the zfs archive.
+
+Signed-off-by: Alexey Romanov <romanov.alexey2000@gmail.com>
+---
+ build/zfs_send | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/build/zfs_send b/build/zfs_send
+index 6bd71f4..efcfdee 100755
+--- a/build/zfs_send
++++ b/build/zfs_send
+@@ -22,6 +22,7 @@ SRCDIR=`dirname $0`
+ KYKDIR=$SRCDIR/..
+ 
+ . $KYKDIR/lib/defs.sh
++. $SRCDIR/../lib/utils.sh
+ 
+ fail() {
+     echo $*
+@@ -266,6 +267,8 @@ if [ "$VARIANT" = nonglobal ]; then
+     sed -i -e 's%^root::%root:$5$kr1VgdIt$OUiUAyZCDogH/uaxH71rMeQxvpDEY2yX.x0ZQRnmeb9:%' $MP/etc/shadow
+ fi
+ 
++apply_custom_overlay $ZFS_CUSTOM_OVERLAY $MP
++
+ note "Creating compressed stream"
+ zfs snapshot $ZDATASET@kayak || fail "snap"
+ zfs send $ZDATASET@kayak | pv | xz -T0 -9c > $OUT || fail "send/compress"
+-- 
+2.47.1.windows.1
+

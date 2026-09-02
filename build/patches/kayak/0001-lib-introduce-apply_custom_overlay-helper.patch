@@ -1,0 +1,49 @@
+From 44a7447199cda3e6fffaa22901e69b39bb98b6df Mon Sep 17 00:00:00 2001
+From: Alexey Romanov <a.romanov@argo.tech>
+Date: Tue, 11 Nov 2025 12:08:51 +0000
+Subject: [PATCH] lib: introduce apply_custom_overlay helper
+
+Signed-off-by: Alexey Romanov <romanov.alexey2000@gmail.com>
+---
+ lib/utils.sh | 26 ++++++++++++++++++++++++++
+ 1 file changed, 26 insertions(+)
+
+diff --git a/lib/utils.sh b/lib/utils.sh
+index a15a84f..31cdf90 100644
+--- a/lib/utils.sh
++++ b/lib/utils.sh
+@@ -146,5 +146,31 @@ function logadm_rsyslog {
+     ' $altroot/etc/logadm.conf
+ }
+ 
++function apply_custom_overlay {
++    typeset custom_overlay="$1"
++    typeset workdir="$2"
++
++    [ -z "$custom_overlay" ] && return 0
++    [ ! -d "$custom_overlay" ] && return 0
++
++    echo " --- applying custom overlay from $custom_overlay"
++
++    typeset -i file_count=0
++    typeset -i dir_count=0
++
++    file_count=`cd "$custom_overlay" && find . -type f | wc -l`
++    dir_count=`cd "$custom_overlay" && find . -type d | wc -l`
++
++    pushd "$custom_overlay" >/dev/null
++    find . | cpio -pdum "$workdir" 2>&1 >/dev/null || {
++        echo " WARNING: Failed to apply overlay completely"
++        popd >/dev/null
++        return 1
++    }
++
++    popd >/dev/null
++    echo " Applied $file_count file(s) from $dir_count directories"
++}
++
+ # Vim hints
+ # vim:ts=4:sw=4:et:fdm=marker
+-- 
+2.47.1.windows.1
+

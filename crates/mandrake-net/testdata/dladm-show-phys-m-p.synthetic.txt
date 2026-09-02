@@ -1,0 +1,4 @@
+e1000g0:primary:0\:c\:29\:ab\:cd\:ef:yes:e1000g0
+e1000g1:primary:0\:c\:29\:ab\:cd\:f0:yes:aggr0
+e1000g2:primary:0\:c\:29\:ab\:cd\:f1:yes:aggr0
+e1000g3:primary:0\:c\:29\:ab\:cd\:f2:no:--

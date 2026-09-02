@@ -1,0 +1,5 @@
+lo0/v4:static:ok:U--------:U--:127.0.0.1/8
+e1000g0/v4:static:ok:U--------:U--:192.168.1.10/24
+vlan10/v4:dhcp:ok:U---d----:---:10.10.0.5/24
+lo0/v6:static:ok:U--------:U--:\:\:1/128
+e1000g0/v6:addrconf:ok:U----p---:U--:fe80\:\:20c\:29ff\:feab\:cdef/10

@@ -1,6 +1,6 @@
 [package]
 name = "mandrake-net"
-description = "dladm/ipadm/Crossbow driver for Mandrake"
+description = "dladm/ipadm/route driver for Mandrake"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -11,6 +11,12 @@ homepage.workspace = true
 publish.workspace = true
 
 [dependencies]
+mandrake-core = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
 
 [lints]
 workspace = true

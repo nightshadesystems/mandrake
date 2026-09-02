@@ -1,0 +1,4 @@
+e1000g0:Ethernet:up:1000:full:e1000g0
+e1000g1:Ethernet:up:1000:full:e1000g1
+e1000g2:Ethernet:up:1000:full:e1000g2
+e1000g3:Ethernet:down:0:unknown:e1000g3

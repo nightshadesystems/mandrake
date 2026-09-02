@@ -1088,6 +1088,12 @@ version = "0.1.0"
 [[package]]
 name = "mandrake-net"
 version = "0.1.0"
+dependencies = [
+ "mandrake-core",
+ "thiserror",
+ "tokio",
+ "tracing",
+]
 
 [[package]]
 name = "mandrake-smf"

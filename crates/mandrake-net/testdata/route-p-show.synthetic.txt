@@ -1,0 +1,2 @@
+persistent: route add default 192.168.1.1
+persistent: route add -net 10.20.0.0/16 192.168.1.1

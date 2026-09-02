@@ -1,0 +1,9 @@
+e1000g0:phys:1500:up:--:--
+e1000g1:phys:1500:up:--:--
+e1000g2:phys:1500:up:--:--
+e1000g3:phys:1500:down:--:--
+aggr0:aggr:1500:up:--:e1000g1 e1000g2
+vlan10:vlan:1500:up:--:e1000g0
+etherstub0:etherstub:9000:up:--:--
+vnic0:vnic:9000:up:--:etherstub0
+vnic1:vnic:1500:up:--:aggr0

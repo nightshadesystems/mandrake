@@ -1,0 +1,3 @@
+aggr0:--:1000Mb:full:up:0\:c\:29\:ab\:cd\:f0:--
+:e1000g1:1000Mb:full:up:0\:c\:29\:ab\:cd\:f0:attached
+:e1000g2:1000Mb:full:up:0\:c\:29\:ab\:cd\:f1:attached

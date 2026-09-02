@@ -75,12 +75,10 @@ capture_net() {
     capture mandrake-net dladm-show-aggr-p dladm show-aggr -p -o link,policy,addrpolicy,lacpactivity,lacptimer,flags
     capture mandrake-net dladm-show-aggr-x-p dladm show-aggr -x -p -o link,port,speed,duplex,state,address,portstate
     capture mandrake-net dladm-show-vlan-p dladm show-vlan -p -o link,vid,over,flags
-    capture mandrake-net dladm-show-etherstub-p dladm show-etherstub -p -o link
     capture mandrake-net dladm-show-vnic-p dladm show-vnic -p -o link,over,speed,macaddress,macaddrtype,vid,zone
-    capture mandrake-net dladm-show-linkprop-mtu-p dladm show-linkprop -p mtu -p -o link,value
     capture mandrake-net ipadm-show-if-p ipadm show-if -p -o ifname,class,state,current,persistent,over
     capture mandrake-net ipadm-show-addr-p ipadm show-addr -p -o addrobj,type,state,current,persistent,addr
-    capture mandrake-net netstat-rn netstat -rn
+    capture mandrake-net netstat-rnv netstat -rnv
     capture mandrake-net route-p-show route -p show
 }
 

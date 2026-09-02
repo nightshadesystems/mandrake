@@ -353,3 +353,20 @@ mod tests {
         assert!(matches!(err, Some(ShellError::Spawn { .. })));
     }
 }
+
+/// A coarse classification of a driver failure, for HTTP mapping.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FailureKind {
+    /// The object does not exist.
+    NotFound,
+    /// The object already exists.
+    Exists,
+    /// Busy, has dependents, or otherwise refused for now.
+    Conflict,
+    /// Not permitted.
+    Forbidden,
+    /// Bad arguments.
+    Invalid,
+    /// Anything else.
+    Other,
+}

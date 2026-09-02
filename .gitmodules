@@ -1,0 +1,8 @@
+[submodule "build/kayak"]
+	path = build/kayak
+	url = https://github.com/nightshadesystems/mandrake-kayak.git
+	branch = mandrake/r151054
+[submodule "build/omnios-build"]
+	path = build/omnios-build
+	url = https://github.com/nightshadesystems/mandrake-build.git
+	branch = mandrake/r151054

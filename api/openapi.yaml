@@ -1,0 +1,235 @@
+openapi: 3.1.0
+info:
+  title: Mandrake API
+  version: 0.1.0
+  summary: Host management API for the Mandrake hypervisor OS
+  description: |
+    HTTP+JSON API served by `mandraked`. This file is the contract and the
+    source of truth for API shape (spec §6.3, §14). `docs/api.md` is generated
+    from it.
+
+    Conventions: plural nouns, UUID identifiers, cursor pagination,
+    `Idempotency-Key` on POST, `202` with a Job for long operations, RFC 7807
+    problem details for errors.
+
+    The same API is also served on the Unix socket
+    `/var/run/mandrake/mandraked.sock`, where root is trusted without auth
+    so `mandrakectl` works for recovery with no network (spec §9).
+
+    Phase 0 stub. Only `GET /system` is defined; every resource family has a
+    tag so later phases fill in paths under it.
+  license:
+    name: MIT
+    identifier: MIT
+  contact:
+    name: Nightshade Systems
+    url: https://nightshade.systems
+
+servers:
+  - url: https://{host}/api/v1
+    description: Console and API over HTTPS
+    variables:
+      host:
+        default: mandrake.local
+
+security:
+  - sessionCookie: []
+  - bearerToken: []
+
+tags:
+  - name: system
+    description: Host identity, time, resources, boot environments
+  - name: network
+    description: "Crossbow objects: links, vnics, aggrs, vlans, etherstubs, addresses, routes"
+  - name: storage
+    description: ZFS pools, datasets, volumes, snapshots
+  - name: images
+    description: Image catalogue and sources
+  - name: zones
+    description: Native and lx zones
+  - name: vms
+    description: bhyve virtual machines and console proxies
+  - name: jobs
+    description: Long-running operations
+  - name: events
+    description: Event stream over WebSocket
+  - name: users
+    description: Local users and roles
+  - name: tokens
+    description: API bearer tokens
+  - name: audit
+    description: Audit log of mutating calls
+
+paths:
+  /system:
+    get:
+      tags: [system]
+      operationId: getSystem
+      summary: Host summary
+      responses:
+        "200":
+          description: Host summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemInfo"
+        "401":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: mandrake_session
+      description: Console session issued at login
+    bearerToken:
+      type: http
+      scheme: bearer
+      description: API token for CLI and automation; hashed at rest
+
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: Client-chosen key; a repeat POST with the same key returns the original result
+      schema:
+        type: string
+        maxLength: 128
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: Opaque cursor from a previous page's next_cursor
+      schema:
+        type: string
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 500
+        default: 100
+
+  responses:
+    Problem:
+      description: Error as RFC 7807 problem details
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    Accepted:
+      description: Operation started; poll the job or watch the event stream
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Job"
+
+  schemas:
+    Id:
+      type: string
+      format: uuid
+      description: Globally unique object identifier, stored in illumos alongside the object
+
+    Problem:
+      type: object
+      description: RFC 7807 problem details
+      required: [type, title, status]
+      properties:
+        type:
+          type: string
+          format: uri
+          default: about:blank
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+          format: uri
+
+    Page:
+      type: object
+      description: Cursor-paginated envelope; concrete list responses extend this with a typed items array
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: {}
+        next_cursor:
+          type: [string, "null"]
+          description: Pass as cursor to fetch the next page; null on the last page
+
+    JobState:
+      type: string
+      enum: [queued, running, succeeded, failed, cancelled]
+
+    Job:
+      type: object
+      description: A long-running operation; returned with 202
+      required: [id, state, created_at]
+      properties:
+        id:
+          $ref: "#/components/schemas/Id"
+        state:
+          $ref: "#/components/schemas/JobState"
+        kind:
+          type: string
+          description: Operation family, for example image.import or vm.create
+        target:
+          $ref: "#/components/schemas/Id"
+        progress:
+          type: number
+          minimum: 0
+          maximum: 1
+        message:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: [string, "null"]
+          format: date-time
+        error:
+          $ref: "#/components/schemas/Problem"
+
+    Metadata:
+      type: object
+      description: Per-object metadata held in SQLite, not in illumos (ADR-0002)
+      properties:
+        display_name:
+          type: string
+        description:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        notes:
+          type: string
+
+    SystemInfo:
+      type: object
+      required: [hostname, version, omnios_release, uptime_seconds]
+      properties:
+        hostname:
+          type: string
+        version:
+          type: string
+          description: Mandrake release version
+        omnios_release:
+          type: string
+          examples: [r151054]
+        boot_environment:
+          type: string
+          description: Active boot environment name
+        uptime_seconds:
+          type: integer
+          minimum: 0

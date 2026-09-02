@@ -23,8 +23,9 @@ info:
     also manages users, tokens, and the system. Each operation lists the
     minimum role in its description.
 
-    Phase 2 surface: `health`, `auth`, `system`, `users`, `tokens`, `audit`,
-    `jobs`, `events`. Later families have tags but no paths yet.
+    Surface so far: `health`, `auth`, `system`, `users`, `tokens`, `audit`,
+    `jobs`, `events` (Phase 2); `storage` and `network` (Phase 3). Later
+    families have tags but no paths yet.
   license:
     name: MIT
     identifier: MIT
@@ -555,6 +556,949 @@ paths:
         default:
           $ref: "#/components/responses/Problem"
 
+  # ------------------------------------------------------------- storage
+
+  /storage/devices:
+    get:
+      tags: [storage]
+      operationId: listDevices
+      summary: Disks on the host
+      description: |
+        Every block device the host sees, with the pool that uses it when
+        one does. Source for the pool creation flow. Any role.
+      responses:
+        "200":
+          description: Devices
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceList"
+        "401":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /storage/pools:
+    get:
+      tags: [storage]
+      operationId: listPools
+      summary: List pools
+      description: Any role. `rpool` is included and marked protected.
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Page of pools
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PoolList"
+        "401":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+    post:
+      tags: [storage]
+      operationId: createPool
+      summary: Create a data pool
+      description: |
+        Role `operator`. Runs `zpool create` with the given vdev layout.
+        Devices already in a pool are refused unless `force` is set.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PoolCreate"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Pool"
+        "409":
+          $ref: "#/components/responses/Problem"
+        "422":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /storage/pools/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [storage]
+      operationId: getPool
+      summary: Pool with vdev layout, health, and scan status
+      description: Any role.
+      responses:
+        "200":
+          description: The pool
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Pool"
+        "404":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+    patch:
+      tags: [storage]
+      operationId: updatePool
+      summary: Update pool metadata
+      description: Role `operator`. Only Mandrake metadata; pool properties are not exposed in this phase.
+      parameters:
+        - $ref: "#/components/parameters/CsrfHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Metadata"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Pool"
+        "404":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      tags: [storage]
+      operationId: destroyPool
+      summary: Destroy a pool
+      description: |
+        Role `admin`. The body must echo the pool name (spec §7). `rpool`
+        is refused with the `protected` problem. Destroys every dataset in
+        the pool.
+      parameters:
+        - $ref: "#/components/parameters/CsrfHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PoolDestroy"
+      responses:
+        "204":
+          description: Destroyed
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "422":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /storage/pools/{id}/scrub:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    post:
+      tags: [storage]
+      operationId: startScrub
+      summary: Start a scrub
+      description: Role `operator`. Returns a job that tracks the scrub to completion.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfHeader"
+      responses:
+        "202":
+          $ref: "#/components/responses/Accepted"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          description: A scrub or resilver is already running
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      tags: [storage]
+      operationId: stopScrub
+      summary: Stop a running scrub
+      description: Role `operator`.
+      parameters:
+        - $ref: "#/components/parameters/CsrfHeader"
+      responses:
+        "204":
+          description: Stopped
+        "404":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /storage/datasets:
+    get:
+      tags: [storage]
+      operationId: listDatasets
+      summary: List filesystems and volumes
+      description: Any role. Filter by pool, parent, or kind.
+      parameters:
+        - name: pool
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: parent
+          in: query
+          required: false
+          description: Only direct children of this dataset name
+          schema:
+            type: string
+        - name: kind
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/DatasetKind"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Page of datasets
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DatasetList"
+        "401":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+    post:
+      tags: [storage]
+      operationId: createDataset
+      summary: Create a filesystem or volume
+      description: Role `operator`. Volumes need `volsize_bytes`.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DatasetCreate"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Dataset"
+        "409":
+          $ref: "#/components/responses/Problem"
+        "422":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /storage/datasets/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [storage]
+      operationId: getDataset
+      summary: Get a dataset
+      description: Any role.
+      responses:
+        "200":
+          description: The dataset
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Dataset"
+        "404":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+    patch:
+      tags: [storage]
+      operationId: updateDataset
+      summary: Change properties or metadata
+      description: |
+        Role `operator`. Volumes may grow (`volsize_bytes` larger than now);
+        shrinking is refused. Mandrake metadata may be set on any dataset,
+        including protected ones.
+      parameters:
+        - $ref: "#/components/parameters/CsrfHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DatasetUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Dataset"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "422":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      tags: [storage]
+      operationId: destroyDataset
+      summary: Destroy a dataset
+      description: |
+        Role `operator`. Refused when the dataset has children or
+        snapshots unless `recursive` is set, or when it is protected.
+      parameters:
+        - $ref: "#/components/parameters/CsrfHeader"
+        - name: recursive
+          in: query
+          required: false
+          description: Also destroy children and snapshots (`zfs destroy -r`)
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "204":
+          description: Destroyed
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          description: Has children or snapshots and `recursive` was not set
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /storage/volumes:
+    get:
+      tags: [storage]
+      operationId: listVolumes
+      summary: List volumes (zvols)
+      description: The `kind=volume` view of datasets. Any role.
+      parameters:
+        - name: pool
+          in: query
+          required: false
+          schema:
+            type: string
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Page of volumes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DatasetList"
+        "401":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /storage/snapshots:
+    get:
+      tags: [storage]
+      operationId: listSnapshots
+      summary: List snapshots
+      description: Any role. Filter by the dataset they belong to.
+      parameters:
+        - name: dataset
+          in: query
+          required: false
+          description: Dataset name; with `recursive` also descendants
+          schema:
+            type: string
+        - name: recursive
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Page of snapshots
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SnapshotList"
+        "401":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+    post:
+      tags: [storage]
+      operationId: createSnapshot
+      summary: Take a snapshot
+      description: Role `operator`.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SnapshotCreate"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Snapshot"
+        "409":
+          $ref: "#/components/responses/Problem"
+        "422":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /storage/snapshots/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [storage]
+      operationId: getSnapshot
+      summary: Get a snapshot
+      description: Any role.
+      responses:
+        "200":
+          description: The snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Snapshot"
+        "404":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      tags: [storage]
+      operationId: destroySnapshot
+      summary: Destroy a snapshot
+      description: Role `operator`. Refused when clones depend on it.
+      parameters:
+        - $ref: "#/components/parameters/CsrfHeader"
+      responses:
+        "204":
+          description: Destroyed
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /storage/snapshots/{id}/rollback:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    post:
+      tags: [storage]
+      operationId: rollbackSnapshot
+      summary: Roll the dataset back to this snapshot
+      description: |
+        Role `operator`. Refused when newer snapshots exist unless
+        `discard_newer` is set (`zfs rollback -r`).
+      parameters:
+        - $ref: "#/components/parameters/CsrfHeader"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                discard_newer:
+                  type: boolean
+                  default: false
+      responses:
+        "204":
+          description: Rolled back
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /storage/snapshots/{id}/clone:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    post:
+      tags: [storage]
+      operationId: cloneSnapshot
+      summary: Clone a snapshot into a new dataset
+      description: Role `operator`. How images become VM disks and zone roots (spec §7).
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  description: Full name of the new dataset
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Dataset"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  # ------------------------------------------------------------- network
+
+  /network/links:
+    get:
+      tags: [network]
+      operationId: listLinks
+      summary: List every datalink
+      description: |
+        Physical links, aggrs, VLANs, etherstubs, and VNICs in one list with
+        their `kind` and what they sit `over`, enough to draw the topology.
+        Any role.
+      responses:
+        "200":
+          description: Links
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LinkList"
+        "401":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /network/links/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [network]
+      operationId: getLink
+      summary: Get a datalink
+      description: Any role.
+      responses:
+        "200":
+          description: The link
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Link"
+        "404":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+    patch:
+      tags: [network]
+      operationId: updateLink
+      summary: Change MTU or metadata
+      description: Role `operator`. MTU changes apply with `dladm set-linkprop`.
+      parameters:
+        - $ref: "#/components/parameters/CsrfHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LinkUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Link"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "422":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /network/aggrs:
+    post:
+      tags: [network]
+      operationId: createAggr
+      summary: Create a link aggregation
+      description: Role `operator`. `dladm create-aggr`.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AggrCreate"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Link"
+        "409":
+          $ref: "#/components/responses/Problem"
+        "422":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /network/aggrs/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    delete:
+      tags: [network]
+      operationId: deleteAggr
+      summary: Delete an aggregation
+      description: Role `operator`. Refused while VLANs or VNICs sit over it, or when protected.
+      parameters:
+        - $ref: "#/components/parameters/CsrfHeader"
+      responses:
+        "204":
+          description: Deleted
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /network/vlans:
+    post:
+      tags: [network]
+      operationId: createVlan
+      summary: Create a VLAN link
+      description: Role `operator`. `dladm create-vlan`.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VlanCreate"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Link"
+        "409":
+          $ref: "#/components/responses/Problem"
+        "422":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /network/vlans/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    delete:
+      tags: [network]
+      operationId: deleteVlan
+      summary: Delete a VLAN link
+      description: Role `operator`. Refused while VNICs sit over it, or when protected.
+      parameters:
+        - $ref: "#/components/parameters/CsrfHeader"
+      responses:
+        "204":
+          description: Deleted
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /network/etherstubs:
+    post:
+      tags: [network]
+      operationId: createEtherstub
+      summary: Create an etherstub
+      description: Role `operator`. `dladm create-etherstub`.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  $ref: "#/components/schemas/LinkName"
+                metadata:
+                  $ref: "#/components/schemas/Metadata"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Link"
+        "409":
+          $ref: "#/components/responses/Problem"
+        "422":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /network/etherstubs/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    delete:
+      tags: [network]
+      operationId: deleteEtherstub
+      summary: Delete an etherstub
+      description: Role `operator`. Refused while VNICs sit over it.
+      parameters:
+        - $ref: "#/components/parameters/CsrfHeader"
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /network/vnics:
+    post:
+      tags: [network]
+      operationId: createVnic
+      summary: Create a VNIC
+      description: Role `operator`. `dladm create-vnic`; MAC auto unless pinned.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VnicCreate"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Link"
+        "409":
+          $ref: "#/components/responses/Problem"
+        "422":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /network/vnics/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    delete:
+      tags: [network]
+      operationId: deleteVnic
+      summary: Delete a VNIC
+      description: Role `operator`. Refused when it carries addresses, belongs to a zone, or is protected.
+      parameters:
+        - $ref: "#/components/parameters/CsrfHeader"
+      responses:
+        "204":
+          description: Deleted
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /network/addresses:
+    get:
+      tags: [network]
+      operationId: listAddresses
+      summary: List IP addresses
+      description: Every address object from `ipadm show-addr`. Any role.
+      responses:
+        "200":
+          description: Addresses
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AddressList"
+        "401":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+    post:
+      tags: [network]
+      operationId: createAddress
+      summary: Add an address to a link
+      description: |
+        Role `operator`. Creates the IP interface first when the link has
+        none. Static, DHCP, or IPv6 autoconf.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddressCreate"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Address"
+        "409":
+          $ref: "#/components/responses/Problem"
+        "422":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /network/addresses/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [network]
+      operationId: getAddress
+      summary: Get an address
+      description: Any role.
+      responses:
+        "200":
+          description: The address
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Address"
+        "404":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      tags: [network]
+      operationId: deleteAddress
+      summary: Remove an address
+      description: Role `operator`. The management address is protected.
+      parameters:
+        - $ref: "#/components/parameters/CsrfHeader"
+      responses:
+        "204":
+          description: Deleted
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /network/routes:
+    get:
+      tags: [network]
+      operationId: listRoutes
+      summary: List routes
+      description: The routing table; only static routes are managed. Any role.
+      responses:
+        "200":
+          description: Routes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RouteList"
+        "401":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+    post:
+      tags: [network]
+      operationId: createRoute
+      summary: Add a persistent static route
+      description: Role `operator`. `route -p add`.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RouteCreate"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Route"
+        "409":
+          $ref: "#/components/responses/Problem"
+        "422":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /network/routes/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    delete:
+      tags: [network]
+      operationId: deleteRoute
+      summary: Remove a static route
+      description: Role `operator`. Dynamic and interface routes are refused.
+      parameters:
+        - $ref: "#/components/parameters/CsrfHeader"
+      responses:
+        "204":
+          description: Deleted
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
 components:
   securitySchemes:
     sessionCookie:
@@ -1060,3 +2004,666 @@ components:
               minimum: 0
         sampled_at:
           $ref: "#/components/schemas/Timestamp"
+
+    # ----------------------------------------------------------- storage
+
+    Bytes:
+      type: integer
+      minimum: 0
+      description: A size in bytes, exact (from `-p` parsable output)
+
+    Device:
+      type: object
+      description: A disk as `diskinfo` reports it
+      required: [name, size_bytes, removable]
+      properties:
+        name:
+          type: string
+          description: Device name, for example `c1t0d0`
+          examples: [c1t0d0]
+        vendor:
+          type: string
+        product:
+          type: string
+        serial:
+          type: string
+        size_bytes:
+          $ref: "#/components/schemas/Bytes"
+        removable:
+          type: boolean
+        solid_state:
+          type: boolean
+        pool:
+          type: [string, "null"]
+          description: Pool using this device, if any
+
+    DeviceList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Device"
+
+    PoolHealth:
+      type: string
+      enum: [ONLINE, DEGRADED, FAULTED, OFFLINE, UNAVAIL, REMOVED, SUSPENDED]
+
+    VdevType:
+      type: string
+      enum: [root, disk, file, mirror, raidz1, raidz2, raidz3, log, cache, spare, replacing, spare-group]
+
+    Vdev:
+      type: object
+      description: One node of a pool's vdev tree
+      required: [name, type, state, children]
+      properties:
+        name:
+          type: string
+          description: As `zpool status` prints it (`mirror-0`, `c1t0d0`)
+        type:
+          $ref: "#/components/schemas/VdevType"
+        state:
+          $ref: "#/components/schemas/PoolHealth"
+        read_errors:
+          type: integer
+        write_errors:
+          type: integer
+        checksum_errors:
+          type: integer
+        note:
+          type: string
+          description: Trailing note such as `(resilvering)`
+        children:
+          type: array
+          items:
+            $ref: "#/components/schemas/Vdev"
+
+    ScanStatus:
+      type: object
+      description: The current or last scrub or resilver
+      required: [function, state]
+      properties:
+        function:
+          type: string
+          enum: [scrub, resilver]
+        state:
+          type: string
+          enum: [in_progress, finished, canceled]
+        progress:
+          type: number
+          minimum: 0
+          maximum: 1
+        started_at:
+          $ref: "#/components/schemas/Timestamp"
+        finished_at:
+          type: [string, "null"]
+          format: date-time
+        errors:
+          type: integer
+        rate_bytes_per_second:
+          type: integer
+        summary:
+          type: string
+          description: The `scan:` line verbatim
+
+    Pool:
+      type: object
+      required: [id, name, health, size_bytes, allocated_bytes, free_bytes, protected, vdevs]
+      properties:
+        id:
+          $ref: "#/components/schemas/Id"
+        name:
+          type: string
+        health:
+          $ref: "#/components/schemas/PoolHealth"
+        size_bytes:
+          $ref: "#/components/schemas/Bytes"
+        allocated_bytes:
+          $ref: "#/components/schemas/Bytes"
+        free_bytes:
+          $ref: "#/components/schemas/Bytes"
+        fragmentation_percent:
+          type: integer
+        capacity_percent:
+          type: integer
+        dedup_ratio:
+          type: number
+        protected:
+          type: boolean
+          description: "`rpool`: no destroy or vdev changes through the API"
+        vdevs:
+          $ref: "#/components/schemas/Vdev"
+        scan:
+          $ref: "#/components/schemas/ScanStatus"
+        status_text:
+          type: string
+          description: The `status:` and `action:` lines from `zpool status`, when present
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+
+    PoolList:
+      allOf:
+        - $ref: "#/components/schemas/Page"
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/Pool"
+
+    VdevSpec:
+      type: object
+      description: One top-level vdev to create
+      required: [type, devices]
+      properties:
+        type:
+          type: string
+          enum: [stripe, mirror, raidz1, raidz2, raidz3, log, cache, spare]
+        devices:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            description: Device name as in `Device.name`
+
+    PoolCreate:
+      type: object
+      required: [name, vdevs]
+      properties:
+        name:
+          type: string
+          pattern: "^[a-zA-Z][a-zA-Z0-9_.:-]{0,254}$"
+        vdevs:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/VdevSpec"
+        ashift:
+          type: integer
+          minimum: 9
+          maximum: 16
+          description: Default 12
+        compression:
+          type: string
+          description: Root dataset compression, default `lz4`
+        force:
+          type: boolean
+          default: false
+          description: "`zpool create -f`: reuse devices with old labels"
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+
+    PoolDestroy:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          description: Must equal the pool's name
+
+    DatasetKind:
+      type: string
+      enum: [filesystem, volume]
+
+    Dataset:
+      type: object
+      required: [id, name, pool, kind, used_bytes, available_bytes, referenced_bytes, protected, created_at]
+      properties:
+        id:
+          $ref: "#/components/schemas/Id"
+        name:
+          type: string
+          description: Full dataset name
+        pool:
+          type: string
+        kind:
+          $ref: "#/components/schemas/DatasetKind"
+        mountpoint:
+          type: [string, "null"]
+        mounted:
+          type: boolean
+        used_bytes:
+          $ref: "#/components/schemas/Bytes"
+        available_bytes:
+          $ref: "#/components/schemas/Bytes"
+        referenced_bytes:
+          $ref: "#/components/schemas/Bytes"
+        logical_used_bytes:
+          $ref: "#/components/schemas/Bytes"
+        quota_bytes:
+          type: [integer, "null"]
+        reservation_bytes:
+          type: [integer, "null"]
+        compression:
+          type: string
+        compress_ratio:
+          type: number
+        atime:
+          type: boolean
+        recordsize_bytes:
+          type: integer
+        volsize_bytes:
+          type: [integer, "null"]
+          description: Volumes only
+        volblocksize_bytes:
+          type: [integer, "null"]
+          description: Volumes only
+        origin:
+          type: [string, "null"]
+          description: Snapshot this dataset was cloned from
+        protected:
+          type: boolean
+          description: Root datasets, boot environments, and Mandrake's own datasets
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+
+    DatasetCreate:
+      type: object
+      required: [name, kind]
+      properties:
+        name:
+          type: string
+          description: Full name, for example `tank/vms/disk0`
+        kind:
+          $ref: "#/components/schemas/DatasetKind"
+        volsize_bytes:
+          type: integer
+          minimum: 1
+          description: Required for volumes
+        volblocksize_bytes:
+          type: integer
+        compression:
+          type: string
+        quota_bytes:
+          type: integer
+        reservation_bytes:
+          type: integer
+        mountpoint:
+          type: string
+        atime:
+          type: boolean
+        recordsize_bytes:
+          type: integer
+        sparse:
+          type: boolean
+          description: "Volumes: `zfs create -s`"
+        create_parents:
+          type: boolean
+          default: false
+          description: "`zfs create -p`"
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+
+    DatasetUpdate:
+      type: object
+      description: Every field optional; omitted fields are unchanged
+      properties:
+        volsize_bytes:
+          type: integer
+          description: "Volumes: grow only"
+        compression:
+          type: string
+        quota_bytes:
+          type: [integer, "null"]
+          description: null removes the quota
+        reservation_bytes:
+          type: [integer, "null"]
+        mountpoint:
+          type: string
+        atime:
+          type: boolean
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+
+    DatasetList:
+      allOf:
+        - $ref: "#/components/schemas/Page"
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/Dataset"
+
+    Snapshot:
+      type: object
+      required: [id, name, dataset, short_name, used_bytes, referenced_bytes, created_at]
+      properties:
+        id:
+          $ref: "#/components/schemas/Id"
+        name:
+          type: string
+          description: Full name `dataset@snap`
+        dataset:
+          type: string
+        short_name:
+          type: string
+          description: The part after `@`
+        used_bytes:
+          $ref: "#/components/schemas/Bytes"
+        referenced_bytes:
+          $ref: "#/components/schemas/Bytes"
+        clones:
+          type: array
+          items:
+            type: string
+          description: Datasets cloned from this snapshot
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+
+    SnapshotCreate:
+      type: object
+      required: [dataset, name]
+      properties:
+        dataset:
+          type: string
+        name:
+          type: string
+          description: The part after `@`
+          pattern: "^[a-zA-Z0-9_.:-]{1,255}$"
+        recursive:
+          type: boolean
+          default: false
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+
+    SnapshotList:
+      allOf:
+        - $ref: "#/components/schemas/Page"
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/Snapshot"
+
+    # ----------------------------------------------------------- network
+
+    LinkName:
+      type: string
+      pattern: "^[a-zA-Z][a-zA-Z0-9_]{0,30}[0-9]$"
+      description: A datalink name; illumos requires it to end in a digit
+
+    LinkKind:
+      type: string
+      enum: [phys, aggr, vlan, etherstub, vnic, other]
+
+    LinkState:
+      type: string
+      enum: [up, down, unknown]
+
+    Link:
+      type: object
+      description: One datalink. Fields not meaningful for a kind are absent.
+      required: [id, name, kind, state, protected]
+      properties:
+        id:
+          $ref: "#/components/schemas/Id"
+        name:
+          type: string
+        kind:
+          $ref: "#/components/schemas/LinkKind"
+        state:
+          $ref: "#/components/schemas/LinkState"
+        over:
+          type: array
+          items:
+            type: string
+          description: Links this one sits on; several for an aggr, one otherwise
+        mtu:
+          type: integer
+        mac:
+          type: string
+          description: "Colon-separated, lowercase"
+        mac_mode:
+          type: string
+          enum: [auto, fixed, random, factory]
+          description: VNICs
+        vid:
+          type: integer
+          description: VLAN id for VLAN links and tagged VNICs
+        speed_mbps:
+          type: integer
+          description: Physical links and aggrs
+        duplex:
+          type: string
+          enum: [full, half, unknown]
+        device:
+          type: string
+          description: Driver instance behind a physical link, for example `e1000g0`
+        media:
+          type: string
+        aggr:
+          $ref: "#/components/schemas/AggrInfo"
+        zone:
+          type: [string, "null"]
+          description: Zone the link is assigned to, if not the global zone
+        protected:
+          type: boolean
+          description: Part of the path to the management address
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+
+    AggrInfo:
+      type: object
+      required: [policy, lacp_mode, lacp_timer, ports]
+      properties:
+        policy:
+          type: string
+          description: "`L2`, `L3`, `L4`, or combinations such as `L2,L3`"
+        lacp_mode:
+          type: string
+          enum: [off, active, passive]
+        lacp_timer:
+          type: string
+          enum: [short, long]
+        ports:
+          type: array
+          items:
+            type: object
+            required: [name, state]
+            properties:
+              name:
+                type: string
+              state:
+                type: string
+                description: "`attached`, `standby`, or as `dladm show-aggr -x` prints it"
+              speed_mbps:
+                type: integer
+
+    LinkList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Link"
+
+    LinkUpdate:
+      type: object
+      properties:
+        mtu:
+          type: integer
+          minimum: 576
+          maximum: 9216
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+
+    AggrCreate:
+      type: object
+      required: [name, ports]
+      properties:
+        name:
+          $ref: "#/components/schemas/LinkName"
+        ports:
+          type: array
+          minItems: 1
+          items:
+            type: string
+        policy:
+          type: string
+          default: L4
+        lacp_mode:
+          type: string
+          enum: [off, active, passive]
+          default: active
+        lacp_timer:
+          type: string
+          enum: [short, long]
+          default: short
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+
+    VlanCreate:
+      type: object
+      required: [name, vid, over]
+      properties:
+        name:
+          $ref: "#/components/schemas/LinkName"
+        vid:
+          type: integer
+          minimum: 1
+          maximum: 4094
+        over:
+          type: string
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+
+    VnicCreate:
+      type: object
+      required: [name, over]
+      properties:
+        name:
+          $ref: "#/components/schemas/LinkName"
+        over:
+          type: string
+        mac:
+          type: string
+          description: Pin a MAC; omitted means auto
+        vid:
+          type: integer
+          minimum: 1
+          maximum: 4094
+        mtu:
+          type: integer
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+
+    AddressKind:
+      type: string
+      enum: [static, dhcp, addrconf]
+
+    Address:
+      type: object
+      required: [id, name, interface, kind, family, state, protected]
+      properties:
+        id:
+          $ref: "#/components/schemas/Id"
+        name:
+          type: string
+          description: The address object, for example `vnic0/v4`
+        interface:
+          type: string
+          description: The link (IP interface) it belongs to
+        kind:
+          $ref: "#/components/schemas/AddressKind"
+        family:
+          type: string
+          enum: [inet, inet6]
+        address:
+          type: string
+          description: "`a.b.c.d/prefix` or `xx::/prefix`; absent until DHCP or autoconf assigns one"
+        state:
+          type: string
+          description: "`ok`, `tentative`, `duplicate`, `inaccessible`, `disabled`, ..."
+        persistent:
+          type: boolean
+        protected:
+          type: boolean
+          description: The address the daemon listens on
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+
+    AddressList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Address"
+
+    AddressCreate:
+      type: object
+      required: [interface, kind]
+      properties:
+        interface:
+          type: string
+          description: Link name; the IP interface is created if missing
+        kind:
+          $ref: "#/components/schemas/AddressKind"
+        address:
+          type: string
+          description: Required for `static`, with prefix length
+        alias:
+          type: string
+          pattern: "^[a-zA-Z0-9_]{1,16}$"
+          description: The part after `/` in the address object name; default `v4` or `v6`
+        temporary:
+          type: boolean
+          default: false
+          description: Do not persist across reboot
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+
+    Route:
+      type: object
+      required: [id, destination, family, kind]
+      properties:
+        id:
+          $ref: "#/components/schemas/Id"
+        destination:
+          type: string
+          description: "`default` or a network with prefix"
+        gateway:
+          type: string
+        family:
+          type: string
+          enum: [inet, inet6]
+        interface:
+          type: string
+        flags:
+          type: string
+          description: As `netstat -rn` prints them
+        kind:
+          type: string
+          enum: [static, interface, dynamic]
+          description: Only `static` routes are managed
+        persistent:
+          type: boolean
+
+    RouteList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Route"
+
+    RouteCreate:
+      type: object
+      required: [destination, gateway]
+      properties:
+        destination:
+          type: string
+          description: "`default` or a network with prefix"
+        gateway:
+          type: string

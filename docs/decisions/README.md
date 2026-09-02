@@ -20,3 +20,4 @@ Use [0000-template.md](0000-template.md) for new records.
 | [0008](0008-console-stack-and-vendoring.md) | Console stack, generated client, and vendored design assets | Accepted |
 | [0009](0009-sqlite-linkage.md) | SQLite from the OmniOS package on illumos, bundled elsewhere | Accepted |
 | [0010](0010-packaging-and-service-layout.md) | Packaging and service layout for the daemon | Accepted |
+| [0011](0011-storage-and-network-model.md) | Storage and network drivers: identity, protection, jobs, testing | Accepted |

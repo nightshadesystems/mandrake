@@ -9,6 +9,8 @@ import { NotYet } from './pages/NotYet.tsx';
 import { Shell } from './pages/Shell.tsx';
 import { Storage } from './pages/Storage.tsx';
 import { Users } from './pages/Users.tsx';
+import { Vms } from './pages/Vms.tsx';
+import { VmDetail } from './pages/vms/VmDetail.tsx';
 import { Zones } from './pages/Zones.tsx';
 import { ZoneDetail } from './pages/zones/ZoneDetail.tsx';
 
@@ -19,6 +21,8 @@ const router = createBrowserRouter([
     Component: Shell,
     children: [
       { index: true, Component: Dashboard },
+      { path: 'vms', Component: Vms },
+      { path: 'vms/:id', Component: VmDetail },
       { path: 'zones', Component: Zones },
       { path: 'zones/:id', Component: ZoneDetail },
       { path: 'images', Component: Images },

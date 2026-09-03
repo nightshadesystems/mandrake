@@ -1,0 +1,30 @@
+# Mandrake unattended install (ADR-0014). A kayak answer file: serve it
+# over HTTP as http://<server>/kayak/<MAC> with the target's MAC address
+# as twelve upper-case hex digits, no separators. The installer fetches
+# it, sources it, and reboots into the installed system.
+#
+# Root pool: one disk, or two for a mirror (spec §10.2).
+BuildRpool c0t0d0 c0t1d0
+
+SetHostname mandrake-01
+SetTimezone UTC
+
+# Resolvers and search domain.
+UseDNS 9.9.9.9 example.net
+
+# Console admin and OS admin user (Primary Administrator, keys only).
+MandrakeAdmin admin 'change-me-now'
+MandrakeSshKey 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyReplaceMe admin@workstation'
+
+# Management VNIC mgmt0 over the first NIC: DHCP, or a static address
+# with the default gateway.
+MandrakeMgmt e1000g0 dhcp
+# MandrakeMgmt e1000g0 192.0.2.10/24 192.0.2.1
+
+# Root password hash for the serial console (crypt(3); the default is
+# empty, which allows console login without a password). Generate one
+# with: openssl passwd -6
+# RootPW '$6$...'
+
+# Uncomment to stay in the installer after the install instead of rebooting.
+# NO_REBOOT=1

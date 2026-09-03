@@ -82,7 +82,7 @@ configuration applied by kayak's `Postboot` mechanism on first boot.
 **OS access.** The admin username is also an OS user with the Primary
 Administrator profile, no password, and the authorised keys from
 `MandrakeSshKey` or the interactive paste field. `sshd_config` gets
-`PermitRootLogin no` and `PasswordAuthentication no` through the overlay;
+`PermitRootLogin no` and `PasswordAuthentication no` from the installer;
 the file is `preserve=true`, so `pkg` leaves the edit alone. Root keeps
 its password for the serial console. IP Filter is enabled with a rule set
 that passes SSH and HTTPS in on `mgmt0`, passes everything out, and

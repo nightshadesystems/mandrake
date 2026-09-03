@@ -25,7 +25,7 @@ info:
 
     Surface so far: `health`, `auth`, `system`, `users`, `tokens`, `audit`,
     `jobs`, `events` (Phase 2); `storage` and `network` (Phase 3); `images`
-    and `zones` (Phase 4). Later families have tags but no paths yet.
+    and `zones` (Phase 4); `vms` (Phase 5).
   license:
     name: MIT
     identifier: MIT
@@ -2074,6 +2074,576 @@ paths:
           $ref: "#/components/responses/Problem"
 
 
+  # ------------------------------------------------------------- vms
+
+  /vms:
+    get:
+      tags: [vms]
+      operationId: listVms
+      summary: List VMs
+      description: Every bhyve-brand zone. Any role.
+      parameters:
+        - name: state
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/ZoneState"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: VMs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VmList"
+        "401":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+    post:
+      tags: [vms]
+      operationId: createVm
+      summary: Create a VM
+      description: |
+        Role `operator`. Writes the zonecfg synchronously, so the VM is
+        listed at once in state `configured`, then in the job returned with
+        202 creates the disks (a clone of a `vm-raw` image, or blank zvols),
+        installs, and boots when `start` is set (ADR-0013).
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VmCreate"
+      responses:
+        "202":
+          description: Create started; the job's target is the new VM
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+        "422":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /vms/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [vms]
+      operationId: getVm
+      summary: Get a VM
+      description: Any role.
+      responses:
+        "200":
+          description: The VM
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Vm"
+        "404":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+    patch:
+      tags: [vms]
+      operationId: updateVm
+      summary: Change sizing, firmware, NICs, or metadata
+      description: |
+        Role `operator`. Written to the zonecfg at once; sizing, firmware,
+        and NIC changes take effect at the next boot of a running VM.
+      parameters:
+        - $ref: "#/components/parameters/CsrfHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VmUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Vm"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "422":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      tags: [vms]
+      operationId: deleteVm
+      summary: Delete a VM
+      description: |
+        Role `operator`. Halts, uninstalls, and removes the configuration
+        in the job returned with 202. Disks stay unless `purge` (spec §7).
+      parameters:
+        - $ref: "#/components/parameters/CsrfHeader"
+        - name: purge
+          in: query
+          required: false
+          description: Also destroy the VM's dataset and disks
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "202":
+          description: Delete started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /vms/{id}/start:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    post:
+      tags: [vms]
+      operationId: startVm
+      summary: Boot a VM
+      description: Role `operator`. As a job.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfHeader"
+      responses:
+        "202":
+          description: Boot started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /vms/{id}/stop:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    post:
+      tags: [vms]
+      operationId: stopVm
+      summary: Shut a VM down
+      description: |
+        Role `operator`. An ACPI shutdown request that waits for the guest,
+        as a job; with `force` the VM is halted at once.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfHeader"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ZoneStop"
+      responses:
+        "202":
+          description: Stop started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /vms/{id}/restart:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    post:
+      tags: [vms]
+      operationId: restartVm
+      summary: Reboot a VM
+      description: Role `operator`. An ACPI shutdown then boot, as a job.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfHeader"
+      responses:
+        "202":
+          description: Restart started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /vms/{id}/reset:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    post:
+      tags: [vms]
+      operationId: resetVm
+      summary: Hard reset a VM
+      description: Role `operator`. Halt then boot, without asking the guest, as a job.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfHeader"
+      responses:
+        "202":
+          description: Reset started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /vms/{id}/disks:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    post:
+      tags: [vms]
+      operationId: addVmDisk
+      summary: Add a disk
+      description: |
+        Role `operator`. A blank zvol of `size_bytes`, or a clone of a
+        `vm-raw` image. Attached at the next boot of a running VM.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VmDiskAdd"
+      responses:
+        "201":
+          description: The VM with the new disk
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Vm"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "422":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /vms/{id}/disks/{index}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+      - name: index
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 0
+    patch:
+      tags: [vms]
+      operationId: resizeVmDisk
+      summary: Grow a disk
+      description: Role `operator`. Volumes only grow; the guest sees the new size at the next boot.
+      parameters:
+        - $ref: "#/components/parameters/CsrfHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VmDiskResize"
+      responses:
+        "200":
+          description: The VM
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Vm"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "422":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      tags: [vms]
+      operationId: removeVmDisk
+      summary: Detach a disk
+      description: |
+        Role `operator`. The boot disk cannot be removed. The zvol stays
+        unless `purge`.
+      parameters:
+        - $ref: "#/components/parameters/CsrfHeader"
+        - name: purge
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: The VM
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Vm"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /vms/{id}/cdroms:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    post:
+      tags: [vms]
+      operationId: attachVmCdrom
+      summary: Attach an ISO
+      description: Role `operator`. A `vm-iso` image. Seen by the guest at the next boot.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VmCdromAttach"
+      responses:
+        "201":
+          description: The VM
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Vm"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "422":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /vms/{id}/cdroms/{index}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+      - name: index
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 0
+    delete:
+      tags: [vms]
+      operationId: detachVmCdrom
+      summary: Detach an ISO
+      description: Role `operator`.
+      parameters:
+        - $ref: "#/components/parameters/CsrfHeader"
+      responses:
+        "200":
+          description: The VM
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Vm"
+        "404":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /vms/{id}/snapshots:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [vms]
+      operationId: listVmSnapshots
+      summary: List a VM's snapshots
+      description: Recursive snapshots of the VM dataset, newest last. Any role.
+      responses:
+        "200":
+          description: Snapshots
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VmSnapshotList"
+        "404":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+    post:
+      tags: [vms]
+      operationId: createVmSnapshot
+      summary: Snapshot every disk at once
+      description: |
+        Role `operator`. `zfs snapshot -r` over the VM dataset. Taken while
+        the guest runs it is crash-consistent: what a power cut would leave.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VmSnapshotCreate"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VmSnapshot"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+        "422":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /vms/{id}/snapshots/{snapshot}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+      - name: snapshot
+        in: path
+        required: true
+        description: The snapshot id, as under /storage/snapshots
+        schema:
+          $ref: "#/components/schemas/Id"
+    delete:
+      tags: [vms]
+      operationId: deleteVmSnapshot
+      summary: Destroy a VM snapshot
+      description: Role `operator`. Destroys it on every disk.
+      parameters:
+        - $ref: "#/components/parameters/CsrfHeader"
+      responses:
+        "204":
+          description: Destroyed
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /vms/{id}/snapshots/{snapshot}/rollback:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+      - name: snapshot
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/Id"
+    post:
+      tags: [vms]
+      operationId: rollbackVmSnapshot
+      summary: Roll every disk back
+      description: Role `operator`. The VM must be stopped. Newer snapshots are destroyed.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfHeader"
+      responses:
+        "204":
+          description: Rolled back
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /vms/{id}/serial:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [vms]
+      operationId: vmSerial
+      summary: Serial console (WebSocket)
+      description: |
+        Role `operator`. As `/zones/{id}/console`: terminal output as
+        server frames, input as client frames, `{"resize": ...}` to resize.
+        One session per VM; 409 `busy` otherwise.
+      parameters:
+        - name: cols
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 20
+            maximum: 500
+            default: 80
+        - name: rows
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 5
+            maximum: 200
+            default: 24
+      responses:
+        "101":
+          description: Switching Protocols
+        "401":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /vms/{id}/vnc:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [vms]
+      operationId: vmVnc
+      summary: VNC (WebSocket)
+      description: |
+        Role `operator`. Upgrade to a WebSocket carrying the guest's RFB
+        stream as binary frames in both directions, for noVNC. The VNC
+        server is reachable only through this proxy (spec §12). Refused
+        with 409 while the VM is not running or another session is attached.
+      responses:
+        "101":
+          description: Switching Protocols
+        "401":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+
 components:
   securitySchemes:
     sessionCookie:
@@ -3633,3 +4203,257 @@ components:
           type: boolean
           default: false
           description: "`zoneadm halt` instead of a clean shutdown"
+
+    # ----------------------------------------------------------- vms
+
+    Bootrom:
+      type: string
+      enum: [uefi, uefi-csm]
+      description: "`uefi` is `BHYVE_RELEASE`; `uefi-csm` adds the legacy BIOS shim"
+
+    VmDisk:
+      type: object
+      description: One zvol-backed disk, in slot order.
+      required: [index, dataset, size_bytes, boot]
+      properties:
+        index:
+          type: integer
+          minimum: 0
+        dataset:
+          type: string
+          description: "`<pool>/vms/<name>/disk<N>`"
+        device:
+          type: string
+          description: "`/dev/zvol/rdsk/...` as the brand sees it"
+        size_bytes:
+          type: integer
+          format: int64
+        boot:
+          type: boolean
+        image_id:
+          $ref: "#/components/schemas/Id"
+
+    VmCdrom:
+      type: object
+      required: [index, image_id, path]
+      properties:
+        index:
+          type: integer
+          minimum: 0
+        image_id:
+          $ref: "#/components/schemas/Id"
+        path:
+          type: string
+
+    Vm:
+      type: object
+      required: [id, name, state, vcpus, memory_bytes, bootrom, acpi, disks, cdroms, nics, vnc, autoboot, zonepath]
+      properties:
+        id:
+          $ref: "#/components/schemas/Id"
+        name:
+          type: string
+        state:
+          $ref: "#/components/schemas/ZoneState"
+        vcpus:
+          type: integer
+          minimum: 1
+        memory_bytes:
+          type: integer
+          format: int64
+        bootrom:
+          $ref: "#/components/schemas/Bootrom"
+        acpi:
+          type: boolean
+        disks:
+          type: array
+          items:
+            $ref: "#/components/schemas/VmDisk"
+        cdroms:
+          type: array
+          items:
+            $ref: "#/components/schemas/VmCdrom"
+        nics:
+          type: array
+          items:
+            $ref: "#/components/schemas/ZoneNic"
+        vnc:
+          type: boolean
+          description: A VNC server runs for the guest, reachable only through the proxy
+        autoboot:
+          type: boolean
+        pool:
+          type: string
+        dataset:
+          type: string
+        zonepath:
+          type: string
+        image_id:
+          $ref: "#/components/schemas/Id"
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+
+    VmList:
+      allOf:
+        - $ref: "#/components/schemas/Page"
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/Vm"
+
+    VmDiskSpec:
+      type: object
+      description: A blank disk of `size_bytes`, or a clone of a `vm-raw` image.
+      properties:
+        size_bytes:
+          type: integer
+          format: int64
+          minimum: 1048576
+        image_id:
+          $ref: "#/components/schemas/Id"
+        boot:
+          type: boolean
+          default: false
+
+    VmCreate:
+      type: object
+      required: [name, vcpus, memory_bytes, disks]
+      properties:
+        name:
+          type: string
+          pattern: "^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,62}$"
+        vcpus:
+          type: integer
+          minimum: 1
+          maximum: 128
+        memory_bytes:
+          type: integer
+          format: int64
+          minimum: 134217728
+        bootrom:
+          $ref: "#/components/schemas/Bootrom"
+        acpi:
+          type: boolean
+          default: true
+        pool:
+          type: string
+        disks:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/VmDiskSpec"
+          description: The first disk boots unless another has `boot`
+        cdroms:
+          type: array
+          items:
+            $ref: "#/components/schemas/Id"
+          description: "`vm-iso` images to attach"
+        nics:
+          type: array
+          items:
+            $ref: "#/components/schemas/ZoneNic"
+        vnc:
+          type: boolean
+          default: true
+        autoboot:
+          type: boolean
+          default: true
+        start:
+          type: boolean
+          default: true
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+
+    VmUpdate:
+      type: object
+      properties:
+        vcpus:
+          type: integer
+          minimum: 1
+          maximum: 128
+        memory_bytes:
+          type: integer
+          format: int64
+          minimum: 134217728
+        bootrom:
+          $ref: "#/components/schemas/Bootrom"
+        acpi:
+          type: boolean
+        vnc:
+          type: boolean
+        autoboot:
+          type: boolean
+        nics:
+          type: array
+          description: Replaces the whole list
+          items:
+            $ref: "#/components/schemas/ZoneNic"
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+
+    VmDiskAdd:
+      type: object
+      properties:
+        size_bytes:
+          type: integer
+          format: int64
+          minimum: 1048576
+        image_id:
+          $ref: "#/components/schemas/Id"
+
+    VmDiskResize:
+      type: object
+      required: [size_bytes]
+      properties:
+        size_bytes:
+          type: integer
+          format: int64
+
+    VmCdromAttach:
+      type: object
+      required: [image_id]
+      properties:
+        image_id:
+          $ref: "#/components/schemas/Id"
+
+    VmSnapshot:
+      type: object
+      required: [id, name, created_at, used_bytes]
+      properties:
+        id:
+          $ref: "#/components/schemas/Id"
+        name:
+          type: string
+          description: The part after `@`
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+        used_bytes:
+          type: integer
+          format: int64
+          description: Across every disk
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+
+    VmSnapshotList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/VmSnapshot"
+
+    VmSnapshotCreate:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          pattern: "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,254}$"
+        metadata:
+          $ref: "#/components/schemas/Metadata"

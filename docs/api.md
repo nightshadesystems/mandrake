@@ -26,7 +26,7 @@ minimum role in its description.
 
 Surface so far: `health`, `auth`, `system`, `users`, `tokens`, `audit`,
 `jobs`, `events` (Phase 2); `storage` and `network` (Phase 3); `images`
-and `zones` (Phase 4). Later families have tags but no paths yet.
+and `zones` (Phase 4); `vms` (Phase 5).
 
 ## Endpoints
 
@@ -111,6 +111,26 @@ and `zones` (Phase 4). Later families have tags but no paths yet.
 | POST | `/zones/{id}/stop` | [Shut a zone down](#stopzone) |
 | POST | `/zones/{id}/restart` | [Reboot a zone](#restartzone) |
 | GET | `/zones/{id}/console` | [Zone console (WebSocket)](#zoneconsole) |
+| GET | `/vms` | [List VMs](#listvms) |
+| POST | `/vms` | [Create a VM](#createvm) |
+| GET | `/vms/{id}` | [Get a VM](#getvm) |
+| PATCH | `/vms/{id}` | [Change sizing, firmware, NICs, or metadata](#updatevm) |
+| DELETE | `/vms/{id}` | [Delete a VM](#deletevm) |
+| POST | `/vms/{id}/start` | [Boot a VM](#startvm) |
+| POST | `/vms/{id}/stop` | [Shut a VM down](#stopvm) |
+| POST | `/vms/{id}/restart` | [Reboot a VM](#restartvm) |
+| POST | `/vms/{id}/reset` | [Hard reset a VM](#resetvm) |
+| POST | `/vms/{id}/disks` | [Add a disk](#addvmdisk) |
+| PATCH | `/vms/{id}/disks/{index}` | [Grow a disk](#resizevmdisk) |
+| DELETE | `/vms/{id}/disks/{index}` | [Detach a disk](#removevmdisk) |
+| POST | `/vms/{id}/cdroms` | [Attach an ISO](#attachvmcdrom) |
+| DELETE | `/vms/{id}/cdroms/{index}` | [Detach an ISO](#detachvmcdrom) |
+| GET | `/vms/{id}/snapshots` | [List a VM's snapshots](#listvmsnapshots) |
+| POST | `/vms/{id}/snapshots` | [Snapshot every disk at once](#createvmsnapshot) |
+| DELETE | `/vms/{id}/snapshots/{snapshot}` | [Destroy a VM snapshot](#deletevmsnapshot) |
+| POST | `/vms/{id}/snapshots/{snapshot}/rollback` | [Roll every disk back](#rollbackvmsnapshot) |
+| GET | `/vms/{id}/serial` | [Serial console (WebSocket)](#vmserial) |
+| GET | `/vms/{id}/vnc` | [VNC (WebSocket)](#vmvnc) |
 
 ## health
 
@@ -1625,6 +1645,412 @@ terminal. One session per zone; a second connect is refused with
 | 409 | `Problem` | Error as RFC 7807 problem details |
 | default | `Problem` | Error as RFC 7807 problem details |
 
+## vms
+
+bhyve virtual machines and console proxies
+
+### listVms
+
+`GET /vms`: List VMs.
+
+Every bhyve-brand zone. Any role.
+
+| Parameter | In | Type | Description |
+|---|---|---|---|
+| `state` | query | `ZoneState` |  |
+| `limit` | query | integer |  |
+| `cursor` | query | string | Opaque cursor from a previous page's next_cursor |
+
+| Status | Body | Description |
+|---|---|---|
+| 200 | `VmList` | VMs |
+| 401 | `Problem` | Error as RFC 7807 problem details |
+| default | `Problem` | Error as RFC 7807 problem details |
+
+### createVm
+
+`POST /vms`: Create a VM.
+
+Role `operator`. Writes the zonecfg synchronously, so the VM is
+listed at once in state `configured`, then in the job returned with
+202 creates the disks (a clone of a `vm-raw` image, or blank zvols),
+installs, and boots when `start` is set (ADR-0013).
+
+| Parameter | In | Type | Description |
+|---|---|---|---|
+| `Idempotency-Key` | header | string | Client-chosen key, scoped to the actor, kept 24 hours. A repeat with the same key and body returns the original response; a different body returns 422. |
+| `X-Mandrake-Request` | header | `1` | Must be `1` on mutating requests authenticated by the session cookie |
+
+Request body: `VmCreate`
+
+| Status | Body | Description |
+|---|---|---|
+| 202 | `Job` | Create started; the job's target is the new VM |
+| 404 | `Problem` | Error as RFC 7807 problem details |
+| 409 | `Problem` | Error as RFC 7807 problem details |
+| 422 | `Problem` | Error as RFC 7807 problem details |
+| default | `Problem` | Error as RFC 7807 problem details |
+
+### getVm
+
+`GET /vms/{id}`: Get a VM.
+
+Any role.
+
+| Parameter | In | Type | Description |
+|---|---|---|---|
+| `id` (required) | path | `Id` |  |
+
+| Status | Body | Description |
+|---|---|---|
+| 200 | `Vm` | The VM |
+| 404 | `Problem` | Error as RFC 7807 problem details |
+| default | `Problem` | Error as RFC 7807 problem details |
+
+### updateVm
+
+`PATCH /vms/{id}`: Change sizing, firmware, NICs, or metadata.
+
+Role `operator`. Written to the zonecfg at once; sizing, firmware,
+and NIC changes take effect at the next boot of a running VM.
+
+| Parameter | In | Type | Description |
+|---|---|---|---|
+| `id` (required) | path | `Id` |  |
+| `X-Mandrake-Request` | header | `1` | Must be `1` on mutating requests authenticated by the session cookie |
+
+Request body: `VmUpdate`
+
+| Status | Body | Description |
+|---|---|---|
+| 200 | `Vm` | Updated |
+| 404 | `Problem` | Error as RFC 7807 problem details |
+| 422 | `Problem` | Error as RFC 7807 problem details |
+| default | `Problem` | Error as RFC 7807 problem details |
+
+### deleteVm
+
+`DELETE /vms/{id}`: Delete a VM.
+
+Role `operator`. Halts, uninstalls, and removes the configuration
+in the job returned with 202. Disks stay unless `purge` (spec §7).
+
+| Parameter | In | Type | Description |
+|---|---|---|---|
+| `id` (required) | path | `Id` |  |
+| `X-Mandrake-Request` | header | `1` | Must be `1` on mutating requests authenticated by the session cookie |
+| `purge` | query | boolean | Also destroy the VM's dataset and disks |
+
+| Status | Body | Description |
+|---|---|---|
+| 202 | `Job` | Delete started |
+| 404 | `Problem` | Error as RFC 7807 problem details |
+| 409 | `Problem` | Error as RFC 7807 problem details |
+| default | `Problem` | Error as RFC 7807 problem details |
+
+### startVm
+
+`POST /vms/{id}/start`: Boot a VM.
+
+Role `operator`. As a job.
+
+| Parameter | In | Type | Description |
+|---|---|---|---|
+| `id` (required) | path | `Id` |  |
+| `Idempotency-Key` | header | string | Client-chosen key, scoped to the actor, kept 24 hours. A repeat with the same key and body returns the original response; a different body returns 422. |
+| `X-Mandrake-Request` | header | `1` | Must be `1` on mutating requests authenticated by the session cookie |
+
+| Status | Body | Description |
+|---|---|---|
+| 202 | `Job` | Boot started |
+| 404 | `Problem` | Error as RFC 7807 problem details |
+| 409 | `Problem` | Error as RFC 7807 problem details |
+| default | `Problem` | Error as RFC 7807 problem details |
+
+### stopVm
+
+`POST /vms/{id}/stop`: Shut a VM down.
+
+Role `operator`. An ACPI shutdown request that waits for the guest,
+as a job; with `force` the VM is halted at once.
+
+| Parameter | In | Type | Description |
+|---|---|---|---|
+| `id` (required) | path | `Id` |  |
+| `Idempotency-Key` | header | string | Client-chosen key, scoped to the actor, kept 24 hours. A repeat with the same key and body returns the original response; a different body returns 422. |
+| `X-Mandrake-Request` | header | `1` | Must be `1` on mutating requests authenticated by the session cookie |
+
+Request body: `ZoneStop`
+
+| Status | Body | Description |
+|---|---|---|
+| 202 | `Job` | Stop started |
+| 404 | `Problem` | Error as RFC 7807 problem details |
+| 409 | `Problem` | Error as RFC 7807 problem details |
+| default | `Problem` | Error as RFC 7807 problem details |
+
+### restartVm
+
+`POST /vms/{id}/restart`: Reboot a VM.
+
+Role `operator`. An ACPI shutdown then boot, as a job.
+
+| Parameter | In | Type | Description |
+|---|---|---|---|
+| `id` (required) | path | `Id` |  |
+| `Idempotency-Key` | header | string | Client-chosen key, scoped to the actor, kept 24 hours. A repeat with the same key and body returns the original response; a different body returns 422. |
+| `X-Mandrake-Request` | header | `1` | Must be `1` on mutating requests authenticated by the session cookie |
+
+| Status | Body | Description |
+|---|---|---|
+| 202 | `Job` | Restart started |
+| 404 | `Problem` | Error as RFC 7807 problem details |
+| 409 | `Problem` | Error as RFC 7807 problem details |
+| default | `Problem` | Error as RFC 7807 problem details |
+
+### resetVm
+
+`POST /vms/{id}/reset`: Hard reset a VM.
+
+Role `operator`. Halt then boot, without asking the guest, as a job.
+
+| Parameter | In | Type | Description |
+|---|---|---|---|
+| `id` (required) | path | `Id` |  |
+| `Idempotency-Key` | header | string | Client-chosen key, scoped to the actor, kept 24 hours. A repeat with the same key and body returns the original response; a different body returns 422. |
+| `X-Mandrake-Request` | header | `1` | Must be `1` on mutating requests authenticated by the session cookie |
+
+| Status | Body | Description |
+|---|---|---|
+| 202 | `Job` | Reset started |
+| 404 | `Problem` | Error as RFC 7807 problem details |
+| 409 | `Problem` | Error as RFC 7807 problem details |
+| default | `Problem` | Error as RFC 7807 problem details |
+
+### addVmDisk
+
+`POST /vms/{id}/disks`: Add a disk.
+
+Role `operator`. A blank zvol of `size_bytes`, or a clone of a
+`vm-raw` image. Attached at the next boot of a running VM.
+
+| Parameter | In | Type | Description |
+|---|---|---|---|
+| `id` (required) | path | `Id` |  |
+| `Idempotency-Key` | header | string | Client-chosen key, scoped to the actor, kept 24 hours. A repeat with the same key and body returns the original response; a different body returns 422. |
+| `X-Mandrake-Request` | header | `1` | Must be `1` on mutating requests authenticated by the session cookie |
+
+Request body: `VmDiskAdd`
+
+| Status | Body | Description |
+|---|---|---|
+| 201 | `Vm` | The VM with the new disk |
+| 404 | `Problem` | Error as RFC 7807 problem details |
+| 422 | `Problem` | Error as RFC 7807 problem details |
+| default | `Problem` | Error as RFC 7807 problem details |
+
+### resizeVmDisk
+
+`PATCH /vms/{id}/disks/{index}`: Grow a disk.
+
+Role `operator`. Volumes only grow; the guest sees the new size at the next boot.
+
+| Parameter | In | Type | Description |
+|---|---|---|---|
+| `id` (required) | path | `Id` |  |
+| `index` (required) | path | integer |  |
+| `X-Mandrake-Request` | header | `1` | Must be `1` on mutating requests authenticated by the session cookie |
+
+Request body: `VmDiskResize`
+
+| Status | Body | Description |
+|---|---|---|
+| 200 | `Vm` | The VM |
+| 404 | `Problem` | Error as RFC 7807 problem details |
+| 422 | `Problem` | Error as RFC 7807 problem details |
+| default | `Problem` | Error as RFC 7807 problem details |
+
+### removeVmDisk
+
+`DELETE /vms/{id}/disks/{index}`: Detach a disk.
+
+Role `operator`. The boot disk cannot be removed. The zvol stays
+unless `purge`.
+
+| Parameter | In | Type | Description |
+|---|---|---|---|
+| `id` (required) | path | `Id` |  |
+| `index` (required) | path | integer |  |
+| `X-Mandrake-Request` | header | `1` | Must be `1` on mutating requests authenticated by the session cookie |
+| `purge` | query | boolean |  |
+
+| Status | Body | Description |
+|---|---|---|
+| 200 | `Vm` | The VM |
+| 404 | `Problem` | Error as RFC 7807 problem details |
+| 409 | `Problem` | Error as RFC 7807 problem details |
+| default | `Problem` | Error as RFC 7807 problem details |
+
+### attachVmCdrom
+
+`POST /vms/{id}/cdroms`: Attach an ISO.
+
+Role `operator`. A `vm-iso` image. Seen by the guest at the next boot.
+
+| Parameter | In | Type | Description |
+|---|---|---|---|
+| `id` (required) | path | `Id` |  |
+| `Idempotency-Key` | header | string | Client-chosen key, scoped to the actor, kept 24 hours. A repeat with the same key and body returns the original response; a different body returns 422. |
+| `X-Mandrake-Request` | header | `1` | Must be `1` on mutating requests authenticated by the session cookie |
+
+Request body: `VmCdromAttach`
+
+| Status | Body | Description |
+|---|---|---|
+| 201 | `Vm` | The VM |
+| 404 | `Problem` | Error as RFC 7807 problem details |
+| 422 | `Problem` | Error as RFC 7807 problem details |
+| default | `Problem` | Error as RFC 7807 problem details |
+
+### detachVmCdrom
+
+`DELETE /vms/{id}/cdroms/{index}`: Detach an ISO.
+
+Role `operator`.
+
+| Parameter | In | Type | Description |
+|---|---|---|---|
+| `id` (required) | path | `Id` |  |
+| `index` (required) | path | integer |  |
+| `X-Mandrake-Request` | header | `1` | Must be `1` on mutating requests authenticated by the session cookie |
+
+| Status | Body | Description |
+|---|---|---|
+| 200 | `Vm` | The VM |
+| 404 | `Problem` | Error as RFC 7807 problem details |
+| default | `Problem` | Error as RFC 7807 problem details |
+
+### listVmSnapshots
+
+`GET /vms/{id}/snapshots`: List a VM's snapshots.
+
+Recursive snapshots of the VM dataset, newest last. Any role.
+
+| Parameter | In | Type | Description |
+|---|---|---|---|
+| `id` (required) | path | `Id` |  |
+
+| Status | Body | Description |
+|---|---|---|
+| 200 | `VmSnapshotList` | Snapshots |
+| 404 | `Problem` | Error as RFC 7807 problem details |
+| default | `Problem` | Error as RFC 7807 problem details |
+
+### createVmSnapshot
+
+`POST /vms/{id}/snapshots`: Snapshot every disk at once.
+
+Role `operator`. `zfs snapshot -r` over the VM dataset. Taken while
+the guest runs it is crash-consistent: what a power cut would leave.
+
+| Parameter | In | Type | Description |
+|---|---|---|---|
+| `id` (required) | path | `Id` |  |
+| `Idempotency-Key` | header | string | Client-chosen key, scoped to the actor, kept 24 hours. A repeat with the same key and body returns the original response; a different body returns 422. |
+| `X-Mandrake-Request` | header | `1` | Must be `1` on mutating requests authenticated by the session cookie |
+
+Request body: `VmSnapshotCreate`
+
+| Status | Body | Description |
+|---|---|---|
+| 201 | `VmSnapshot` | Created |
+| 404 | `Problem` | Error as RFC 7807 problem details |
+| 409 | `Problem` | Error as RFC 7807 problem details |
+| 422 | `Problem` | Error as RFC 7807 problem details |
+| default | `Problem` | Error as RFC 7807 problem details |
+
+### deleteVmSnapshot
+
+`DELETE /vms/{id}/snapshots/{snapshot}`: Destroy a VM snapshot.
+
+Role `operator`. Destroys it on every disk.
+
+| Parameter | In | Type | Description |
+|---|---|---|---|
+| `id` (required) | path | `Id` |  |
+| `snapshot` (required) | path | `Id` | The snapshot id, as under /storage/snapshots |
+| `X-Mandrake-Request` | header | `1` | Must be `1` on mutating requests authenticated by the session cookie |
+
+| Status | Body | Description |
+|---|---|---|
+| 204 |  | Destroyed |
+| 404 | `Problem` | Error as RFC 7807 problem details |
+| 409 | `Problem` | Error as RFC 7807 problem details |
+| default | `Problem` | Error as RFC 7807 problem details |
+
+### rollbackVmSnapshot
+
+`POST /vms/{id}/snapshots/{snapshot}/rollback`: Roll every disk back.
+
+Role `operator`. The VM must be stopped. Newer snapshots are destroyed.
+
+| Parameter | In | Type | Description |
+|---|---|---|---|
+| `id` (required) | path | `Id` |  |
+| `snapshot` (required) | path | `Id` |  |
+| `Idempotency-Key` | header | string | Client-chosen key, scoped to the actor, kept 24 hours. A repeat with the same key and body returns the original response; a different body returns 422. |
+| `X-Mandrake-Request` | header | `1` | Must be `1` on mutating requests authenticated by the session cookie |
+
+| Status | Body | Description |
+|---|---|---|
+| 204 |  | Rolled back |
+| 404 | `Problem` | Error as RFC 7807 problem details |
+| 409 | `Problem` | Error as RFC 7807 problem details |
+| default | `Problem` | Error as RFC 7807 problem details |
+
+### vmSerial
+
+`GET /vms/{id}/serial`: Serial console (WebSocket).
+
+Role `operator`. As `/zones/{id}/console`: terminal output as
+server frames, input as client frames, `{"resize": ...}` to resize.
+One session per VM; 409 `busy` otherwise.
+
+| Parameter | In | Type | Description |
+|---|---|---|---|
+| `id` (required) | path | `Id` |  |
+| `cols` | query | integer |  |
+| `rows` | query | integer |  |
+
+| Status | Body | Description |
+|---|---|---|
+| 101 |  | Switching Protocols |
+| 401 | `Problem` | Error as RFC 7807 problem details |
+| 404 | `Problem` | Error as RFC 7807 problem details |
+| 409 | `Problem` | Error as RFC 7807 problem details |
+| default | `Problem` | Error as RFC 7807 problem details |
+
+### vmVnc
+
+`GET /vms/{id}/vnc`: VNC (WebSocket).
+
+Role `operator`. Upgrade to a WebSocket carrying the guest's RFB
+stream as binary frames in both directions, for noVNC. The VNC
+server is reachable only through this proxy (spec §12). Refused
+with 409 while the VM is not running or another session is attached.
+
+| Parameter | In | Type | Description |
+|---|---|---|---|
+| `id` (required) | path | `Id` |  |
+
+| Status | Body | Description |
+|---|---|---|
+| 101 |  | Switching Protocols |
+| 401 | `Problem` | Error as RFC 7807 problem details |
+| 404 | `Problem` | Error as RFC 7807 problem details |
+| 409 | `Problem` | Error as RFC 7807 problem details |
+| default | `Problem` | Error as RFC 7807 problem details |
+
 ## Schemas
 
 ### Id
@@ -2474,4 +2900,145 @@ Extends `Page`.
 | Field | Type | Description |
 |---|---|---|
 | `force` | boolean | `zoneadm halt` instead of a clean shutdown |
+
+### Bootrom
+
+`uefi` is `BHYVE_RELEASE`; `uefi-csm` adds the legacy BIOS shim
+
+Type: `uefi` \| `uefi-csm`
+
+### VmDisk
+
+One zvol-backed disk, in slot order.
+
+| Field | Type | Description |
+|---|---|---|
+| `index` (required) | integer |  |
+| `dataset` (required) | string | `<pool>/vms/<name>/disk<N>` |
+| `device` | string | `/dev/zvol/rdsk/...` as the brand sees it |
+| `size_bytes` (required) | integer (int64) |  |
+| `boot` (required) | boolean |  |
+| `image_id` | `Id` |  |
+
+### VmCdrom
+
+| Field | Type | Description |
+|---|---|---|
+| `index` (required) | integer |  |
+| `image_id` (required) | `Id` |  |
+| `path` (required) | string |  |
+
+### Vm
+
+| Field | Type | Description |
+|---|---|---|
+| `id` (required) | `Id` |  |
+| `name` (required) | string |  |
+| `state` (required) | `ZoneState` |  |
+| `vcpus` (required) | integer |  |
+| `memory_bytes` (required) | integer (int64) |  |
+| `bootrom` (required) | `Bootrom` |  |
+| `acpi` (required) | boolean |  |
+| `disks` (required) | array of `VmDisk` |  |
+| `cdroms` (required) | array of `VmCdrom` |  |
+| `nics` (required) | array of `ZoneNic` |  |
+| `vnc` (required) | boolean | A VNC server runs for the guest, reachable only through the proxy |
+| `autoboot` (required) | boolean |  |
+| `pool` | string |  |
+| `dataset` | string |  |
+| `zonepath` (required) | string |  |
+| `image_id` | `Id` |  |
+| `created_at` | `Timestamp` |  |
+| `metadata` | `Metadata` |  |
+
+### VmList
+
+Extends `Page`.
+
+| Field | Type | Description |
+|---|---|---|
+| `items` (required) | array of `Vm` |  |
+
+### VmDiskSpec
+
+A blank disk of `size_bytes`, or a clone of a `vm-raw` image.
+
+| Field | Type | Description |
+|---|---|---|
+| `size_bytes` | integer (int64) |  |
+| `image_id` | `Id` |  |
+| `boot` | boolean |  |
+
+### VmCreate
+
+| Field | Type | Description |
+|---|---|---|
+| `name` (required) | string |  |
+| `vcpus` (required) | integer |  |
+| `memory_bytes` (required) | integer (int64) |  |
+| `bootrom` | `Bootrom` |  |
+| `acpi` | boolean |  |
+| `pool` | string |  |
+| `disks` (required) | array of `VmDiskSpec` | The first disk boots unless another has `boot` |
+| `cdroms` | array of `Id` | `vm-iso` images to attach |
+| `nics` | array of `ZoneNic` |  |
+| `vnc` | boolean |  |
+| `autoboot` | boolean |  |
+| `start` | boolean |  |
+| `metadata` | `Metadata` |  |
+
+### VmUpdate
+
+| Field | Type | Description |
+|---|---|---|
+| `vcpus` | integer |  |
+| `memory_bytes` | integer (int64) |  |
+| `bootrom` | `Bootrom` |  |
+| `acpi` | boolean |  |
+| `vnc` | boolean |  |
+| `autoboot` | boolean |  |
+| `nics` | array of `ZoneNic` | Replaces the whole list |
+| `metadata` | `Metadata` |  |
+
+### VmDiskAdd
+
+| Field | Type | Description |
+|---|---|---|
+| `size_bytes` | integer (int64) |  |
+| `image_id` | `Id` |  |
+
+### VmDiskResize
+
+| Field | Type | Description |
+|---|---|---|
+| `size_bytes` (required) | integer (int64) |  |
+
+### VmCdromAttach
+
+| Field | Type | Description |
+|---|---|---|
+| `image_id` (required) | `Id` |  |
+
+### VmSnapshot
+
+| Field | Type | Description |
+|---|---|---|
+| `id` (required) | `Id` |  |
+| `name` (required) | string | The part after `@` |
+| `created_at` (required) | `Timestamp` |  |
+| `used_bytes` (required) | integer (int64) | Across every disk |
+| `metadata` | `Metadata` |  |
+
+### VmSnapshotList
+
+| Field | Type | Description |
+|---|---|---|
+| `items` (required) | array of `VmSnapshot` |  |
+
+### VmSnapshotCreate
+
+| Field | Type | Description |
+|---|---|---|
+| `name` (required) | string |  |
+| `metadata` | `Metadata` |  |
 

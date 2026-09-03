@@ -83,3 +83,10 @@ export async function unwrap<T>(pending: Promise<Outcome<T>>): Promise<T> {
 export function isUnauthorized(error: unknown): boolean {
   return error instanceof ApiError && error.status === 401;
 }
+
+/** The WebSocket address for an API path under `/api/v1`. */
+export function websocketUrl(path: string, query?: Record<string, string>): string {
+  const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws';
+  const q = query ? `?${new URLSearchParams(query).toString()}` : '';
+  return `${scheme}://${window.location.host}/api/v1${path}${q}`;
+}

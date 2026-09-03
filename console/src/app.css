@@ -357,3 +357,14 @@
 .page-header h1 a:hover {
   text-decoration: underline;
 }
+
+.vnc-host {
+  height: 600px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #0b0d12;
+  border: 1px solid var(--cds-alias-object-border-color);
+}
+.vnc-host canvas {
+  cursor: default;
+}

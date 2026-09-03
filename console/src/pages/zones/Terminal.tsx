@@ -1,16 +1,18 @@
-// The zone console: xterm.js over the daemon's console WebSocket.
+// The zone console and VM serial console: xterm.js over the daemon's
+// console WebSocket.
 
 import { useEffect, useRef, useState } from 'react';
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal as XTerm } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
 
+import { serialUrl } from '../../api/vms.ts';
 import { consoleUrl } from '../../api/zones.ts';
 import { Button, Label } from '../../design/index.tsx';
 
 type Status = 'connecting' | 'connected' | 'closed' | 'refused';
 
-export function ZoneTerminal({ zoneId }: { zoneId: string }) {
+export function ConsoleTerminal({ kind, id }: { kind: 'zone' | 'vm'; id: string }) {
   const host = useRef<HTMLDivElement | null>(null);
   const [status, setStatus] = useState<Status>('connecting');
   const [generation, setGeneration] = useState(0);
@@ -31,7 +33,9 @@ export function ZoneTerminal({ zoneId }: { zoneId: string }) {
     fit.fit();
     setStatus('connecting');
 
-    const socket = new WebSocket(consoleUrl(zoneId, term.cols, term.rows));
+    const socket = new WebSocket(
+      kind === 'vm' ? serialUrl(id, term.cols, term.rows) : consoleUrl(id, term.cols, term.rows),
+    );
     socket.binaryType = 'arraybuffer';
     socket.onopen = () => {
       setStatus('connected');
@@ -71,7 +75,7 @@ export function ZoneTerminal({ zoneId }: { zoneId: string }) {
       socket.close();
       term.dispose();
     };
-  }, [zoneId, generation]);
+  }, [kind, id, generation]);
 
   return (
     <div className="terminal-block">
@@ -90,7 +94,7 @@ export function ZoneTerminal({ zoneId }: { zoneId: string }) {
           {status.toUpperCase()}
         </Label>
         <span className="field-note">
-          Ctrl-] is the console escape. One session per zone at a time.
+          Ctrl-] is the console escape. One session per {kind} at a time.
         </span>
         <span className="spacer" />
         {status !== 'connected' && status !== 'connecting' && (

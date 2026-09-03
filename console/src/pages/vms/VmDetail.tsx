@@ -35,9 +35,11 @@ import { emptyMetadata, metadataBody, problem } from '../common/util.ts';
 import { parseSize } from '../storage/util.ts';
 import { NicEditor } from '../zones/NicEditor.tsx';
 import { nicErrors } from '../zones/util.ts';
+import { ConsoleTerminal } from '../zones/Terminal.tsx';
 import { ZoneStateLabel } from '../zones/ZoneDetail.tsx';
 import { DisksTab, MediaTab } from './Disks.tsx';
 import { SnapshotsTab } from './Snapshots.tsx';
+import { VmDisplay } from './Vnc.tsx';
 import { BOOTROMS, canStart, sizingErrors } from './util.ts';
 
 function EditVmModal({ vm, onClose }: { vm: Vm; onClose: () => void }) {
@@ -319,6 +321,7 @@ export function VmDetail() {
   }
   const v = vm.data;
   const running = v.state === 'running';
+  const consoleReady = v.state !== 'configured' && v.state !== 'incomplete';
 
   return (
     <>
@@ -413,6 +416,31 @@ export function VmDetail() {
           { label: 'Disks', content: <DisksTab vm={v} canWrite={canWrite} /> },
           { label: 'Media', content: <MediaTab vm={v} canWrite={canWrite} /> },
           { label: 'Snapshots', content: <SnapshotsTab vm={v} canWrite={canWrite} /> },
+          {
+            label: 'Serial',
+            disabled: !canWrite || !consoleReady,
+            content: consoleReady ? (
+              <ConsoleTerminal kind="vm" id={v.id} />
+            ) : (
+              <p className="field-note">
+                The serial console is available once the VM is installed.
+              </p>
+            ),
+          },
+          {
+            label: 'Display',
+            disabled: !canWrite || !running || !v.vnc,
+            content:
+              running && v.vnc ? (
+                <VmDisplay vmId={v.id} />
+              ) : (
+                <p className="field-note">
+                  {v.vnc
+                    ? 'The display is available while the VM runs.'
+                    : 'VNC is off for this VM; turn it on under Edit.'}
+                </p>
+              ),
+          },
         ]}
       />
       {editing && (

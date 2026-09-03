@@ -34,7 +34,7 @@ import { emptyMetadata, metadataBody, problem } from '../common/util.ts';
 import { parseSize } from '../storage/util.ts';
 import { NicEditor } from './NicEditor.tsx';
 import { nicErrors } from './util.ts';
-import { ZoneTerminal } from './Terminal.tsx';
+import { ConsoleTerminal } from './Terminal.tsx';
 
 export function ZoneStateLabel({ state }: { state: Zone['state'] }) {
   switch (state) {
@@ -425,7 +425,7 @@ export function ZoneDetail() {
             label: 'Console',
             disabled: !canWrite || !consoleReady,
             content: consoleReady ? (
-              <ZoneTerminal zoneId={z.id} />
+              <ConsoleTerminal kind="zone" id={z.id} />
             ) : (
               <p className="field-note">The console is available once the zone is installed.</p>
             ),

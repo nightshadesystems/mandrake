@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { api, unwrap, type Schemas } from './client';
+import { api, unwrap, websocketUrl, type Schemas } from './client';
 import { isTransitional } from './zones';
 
 export type Vm = Schemas['Vm'];
@@ -188,4 +188,17 @@ export function useRollbackVmSnapshot() {
       ),
     onSuccess: invalidate,
   });
+}
+
+/** The serial console WebSocket address for a VM. */
+export function serialUrl(id: string, cols: number, rows: number): string {
+  return websocketUrl(`/vms/${encodeURIComponent(id)}/serial`, {
+    cols: String(cols),
+    rows: String(rows),
+  });
+}
+
+/** The VNC relay WebSocket address for a VM. */
+export function vncUrl(id: string): string {
+  return websocketUrl(`/vms/${encodeURIComponent(id)}/vnc`);
 }

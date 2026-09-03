@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { api, unwrap, type Schemas } from './client';
+import { api, unwrap, websocketUrl, type Schemas } from './client';
 
 export type Zone = Schemas['Zone'];
 export type ZoneBrand = Schemas['ZoneBrand'];
@@ -97,6 +97,8 @@ export function useZoneAction() {
 
 /** The console WebSocket address for a zone. */
 export function consoleUrl(id: string, cols: number, rows: number): string {
-  const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws';
-  return `${scheme}://${window.location.host}/api/v1/zones/${encodeURIComponent(id)}/console?cols=${String(cols)}&rows=${String(rows)}`;
+  return websocketUrl(`/zones/${encodeURIComponent(id)}/console`, {
+    cols: String(cols),
+    rows: String(rows),
+  });
 }

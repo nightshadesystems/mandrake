@@ -4,6 +4,7 @@ pub mod audit;
 pub mod auth;
 pub mod events;
 pub mod health;
+pub mod images;
 pub mod jobs;
 pub mod network;
 pub mod storage;

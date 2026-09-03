@@ -13,10 +13,10 @@ use mandrake_core::{
     Id,
     api::{JobState, ObjectRef},
 };
-use mandraked::{app::AppState, db::Db, error::ApiError, jobs};
+use mandraked::{app::AppState, db::Db, drivers::Options, error::ApiError, jobs};
 
 async fn state() -> AppState {
-    AppState::new(Db::open_in_memory().expect("db"))
+    AppState::with_options(Db::open_in_memory().expect("db"), Options::fake())
         .await
         .expect("state")
 }

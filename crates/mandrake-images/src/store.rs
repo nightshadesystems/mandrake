@@ -187,21 +187,24 @@ impl Store for ZfsStore {
 /// files live in a temporary directory.
 #[derive(Clone)]
 pub struct FakeStore {
-    root: Arc<tempfile::TempDir>,
+    root: Arc<PathBuf>,
     datasets: Arc<Mutex<Vec<String>>>,
     snapshots: Arc<Mutex<Vec<String>>>,
     kept: Arc<Mutex<Vec<PathBuf>>>,
 }
 
 impl FakeStore {
-    /// A store over a fresh temporary directory.
-    pub fn new() -> Result<Self> {
-        Ok(Self {
-            root: Arc::new(tempfile::tempdir().map_err(|e| ImageError::Io(e.to_string()))?),
+    /// A store over a fresh directory under the system temp directory.
+    pub fn new() -> Self {
+        let root =
+            std::env::temp_dir().join(format!("mandrake-fake-store-{}", mandrake_core::Id::new()));
+        let _ = std::fs::create_dir_all(&root);
+        Self {
+            root: Arc::new(root),
             datasets: Arc::new(Mutex::new(Vec::new())),
             snapshots: Arc::new(Mutex::new(Vec::new())),
             kept: Arc::new(Mutex::new(Vec::new())),
-        })
+        }
     }
 
     /// Datasets and zvols created, in order.
@@ -221,11 +224,17 @@ impl FakeStore {
 
     /// The temporary root, for locating files in tests.
     pub fn root(&self) -> &Path {
-        self.root.path()
+        self.root.as_path()
     }
 
     fn under_root(&self, pool: &str, rest: &str) -> PathBuf {
-        self.root.path().join(pool).join(rest)
+        self.root.as_path().join(pool).join(rest)
+    }
+}
+
+impl Default for FakeStore {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -286,7 +295,7 @@ impl Store for FakeStore {
             // absolute path the plan names.
             let target = self
                 .root
-                .path()
+                .as_path()
                 .join(dest.to_string_lossy().trim_start_matches(['/', '\\']));
             if let Some(parent) = target.parent() {
                 tokio::fs::create_dir_all(parent)

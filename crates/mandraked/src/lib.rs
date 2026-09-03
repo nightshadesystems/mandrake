@@ -24,6 +24,7 @@ pub mod error;
 pub mod events;
 pub mod host;
 pub mod idempotency;
+pub mod images;
 pub mod jobs;
 pub mod metadata;
 pub mod routes;

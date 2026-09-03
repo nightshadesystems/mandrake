@@ -218,7 +218,7 @@ mod tests {
         let transport = FakeTransport::new();
         let body = b"not really a zfs stream";
         transport.add("https://x/img.zfs.gz", body.to_vec());
-        let store = FakeStore::new().unwrap();
+        let store = FakeStore::new();
         let importer = Importer::new(Arc::new(transport), Arc::new(store.clone()));
         let p = plan(ImageType::ZoneLx, "https://x/img.zfs.gz", body);
         let seen = Mutex::new(Vec::new());
@@ -247,7 +247,7 @@ mod tests {
         transport
             .add("https://x/a.iso", b"iso".to_vec())
             .add("https://x/b.raw.xz", b"raw".to_vec());
-        let store = FakeStore::new().unwrap();
+        let store = FakeStore::new();
         let importer = Importer::new(Arc::new(transport), Arc::new(store.clone()));
         let iso = plan(ImageType::VmIso, "https://x/a.iso", b"iso");
         let out = importer.run(&iso, &|_| {}).await.unwrap();
@@ -275,7 +275,7 @@ mod tests {
     async fn hash_mismatch_fails_and_cleans_up() {
         let transport = FakeTransport::new();
         transport.add("https://x/img.zfs.gz", b"payload".to_vec());
-        let store = FakeStore::new().unwrap();
+        let store = FakeStore::new();
         let importer = Importer::new(Arc::new(transport), Arc::new(store.clone()));
         let mut p = plan(ImageType::ZoneLx, "https://x/img.zfs.gz", b"payload");
         p.sha256 = "0".repeat(64);

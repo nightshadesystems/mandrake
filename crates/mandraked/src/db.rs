@@ -14,7 +14,10 @@ use rusqlite::{Connection, OpenFlags, Row, types::Type};
 
 use crate::error::ApiError;
 
-const MIGRATIONS: &[&str] = &[include_str!("../migrations/0001_init.sql")];
+const MIGRATIONS: &[&str] = &[
+    include_str!("../migrations/0001_init.sql"),
+    include_str!("../migrations/0002_images.sql"),
+];
 
 /// Errors opening or migrating the database.
 #[derive(Debug, thiserror::Error)]

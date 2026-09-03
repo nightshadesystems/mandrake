@@ -15,6 +15,7 @@ use axum::{
     routing::{get, post, put},
 };
 use mandrake_core::Id;
+use mandrake_images::Importer;
 use mandrake_net::{AddressInfo, LinkInfo, Net, RouteInfo};
 use mandrake_zfs::{DatasetInfo, PoolInfo, SnapshotInfo, Zfs};
 use rusqlite::OptionalExtension;
@@ -76,6 +77,8 @@ pub struct Inner {
     pub addresses_cache: TtlCache<Vec<AddressInfo>>,
     /// Cached routing table.
     pub routes_cache: TtlCache<Vec<RouteInfo>>,
+    /// Image transport and store.
+    pub importer: Importer,
 }
 
 impl std::ops::Deref for AppState {
@@ -89,7 +92,7 @@ impl std::ops::Deref for AppState {
 impl AppState {
     /// Build state over an opened database, creating the host id if needed.
     pub async fn new(db: Db) -> Result<Self, ApiError> {
-        Self::with_options(db, Options::system()).await
+        Self::with_options(db, Options::system()?).await
     }
 
     /// Fake drivers and a custom login limiter (tests).
@@ -103,6 +106,7 @@ impl AppState {
             login_limiter,
             zfs,
             net,
+            importer,
             scan_poll,
             listen,
         } = options;
@@ -138,6 +142,7 @@ impl AppState {
             links_cache: TtlCache::new(LIST_TTL),
             addresses_cache: TtlCache::new(LIST_TTL),
             routes_cache: TtlCache::new(LIST_TTL),
+            importer,
         })))
     }
 }
@@ -198,6 +203,7 @@ pub fn api_router(state: AppState) -> Router {
         .route("/events", get(routes::events::stream))
         .merge(routes::storage::router())
         .merge(routes::network::router())
+        .merge(routes::images::router())
         .layer(middleware::from_fn_with_state(
             state.clone(),
             idempotency::layer,

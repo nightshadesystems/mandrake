@@ -5,6 +5,7 @@ use std::{net::IpAddr, sync::Arc, time::Duration};
 
 use axum::http::StatusCode;
 use mandrake_core::shell::{FailureKind, SystemRunner};
+use mandrake_images::{FakeStore, FakeTransport, HttpTransport, ImageError, Importer, ZfsStore};
 use mandrake_net::{FakeNet, Net, NetCli, NetError};
 use mandrake_zfs::{FakeZfs, Zfs, ZfsCli, ZfsError};
 
@@ -21,6 +22,8 @@ pub struct Options {
     pub zfs: Arc<dyn Zfs>,
     /// Network driver.
     pub net: Arc<dyn Net>,
+    /// Image transport and store.
+    pub importer: Importer,
     /// How often a scan job polls the pool.
     pub scan_poll: Duration,
     /// The address the HTTPS listener is bound to, when it is a specific
@@ -30,15 +33,20 @@ pub struct Options {
 
 impl Options {
     /// The real drivers, shelling out to illumos tooling.
-    pub fn system() -> Self {
+    pub fn system() -> Result<Self, ApiError> {
         let runner = Arc::new(SystemRunner::new());
-        Self {
+        let transport = HttpTransport::new()?;
+        Ok(Self {
             login_limiter: LoginLimiter::default_login(),
             zfs: Arc::new(ZfsCli::new(runner.clone())),
-            net: Arc::new(NetCli::new(runner)),
+            net: Arc::new(NetCli::new(runner.clone())),
+            importer: Importer::new(
+                Arc::new(transport),
+                Arc::new(ZfsStore::new(runner, crate::images::STORE_OWNER)),
+            ),
             scan_poll: Duration::from_secs(2),
             listen: None,
-        }
+        })
     }
 
     /// In-memory fakes seeded with a typical host, for development away
@@ -48,6 +56,7 @@ impl Options {
             login_limiter: LoginLimiter::default_login(),
             zfs: Arc::new(FakeZfs::typical()),
             net: Arc::new(FakeNet::typical()),
+            importer: Importer::new(Arc::new(FakeTransport::new()), Arc::new(FakeStore::new())),
             scan_poll: Duration::from_millis(20),
             listen: None,
         }
@@ -71,6 +80,13 @@ impl Options {
     #[must_use]
     pub fn with_net(mut self, net: Arc<dyn Net>) -> Self {
         self.net = net;
+        self
+    }
+
+    /// Replace the image importer.
+    #[must_use]
+    pub fn with_importer(mut self, importer: Importer) -> Self {
+        self.importer = importer;
         self
     }
 
@@ -126,5 +142,15 @@ impl From<NetError> for ApiError {
             other => other.to_string(),
         };
         driver_error(e.kind(), detail, "network", &e)
+    }
+}
+
+impl From<ImageError> for ApiError {
+    fn from(e: ImageError) -> Self {
+        let detail = match &e {
+            ImageError::Command(c) => c.stderr().to_owned(),
+            other => other.to_string(),
+        };
+        driver_error(e.kind(), detail, "image", &e)
     }
 }

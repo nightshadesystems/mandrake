@@ -42,9 +42,14 @@ pub async fn run(cfg: Config) -> Result<(), RunError> {
         tracing::warn!("running with fake drivers; storage and network are simulated");
         crate::drivers::Options::fake().with_listen(cfg.listen.ip())
     } else {
-        crate::drivers::Options::system().with_listen(cfg.listen.ip())
+        crate::drivers::Options::system()?.with_listen(cfg.listen.ip())
     };
     let state = AppState::with_options(db, options).await?;
+    match state.db.call(|conn| crate::images::recover(conn)).await {
+        Ok(n) if n > 0 => tracing::warn!(images = n, "interrupted image imports marked failed"),
+        Ok(_) => {}
+        Err(e) => tracing::warn!(error = %e, "image recovery failed"),
+    }
     match state.db.call(|conn| crate::jobs::recover(conn)).await {
         Ok(n) if n > 0 => tracing::warn!(
             jobs = n,

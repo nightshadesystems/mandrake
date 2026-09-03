@@ -50,6 +50,9 @@ impl HttpTransport {
     /// A transport with a 30 s connect timeout and no total timeout, since
     /// payloads can be large.
     pub fn new() -> Result<Self> {
+        // The daemon installs the provider at startup; anyone else building a
+        // transport (tests, tools) gets ring, and a second install is harmless.
+        let _ = rustls::crypto::ring::default_provider().install_default();
         let client = reqwest::Client::builder()
             .connect_timeout(std::time::Duration::from_secs(30))
             .user_agent(concat!("mandrake/", env!("CARGO_PKG_VERSION")))

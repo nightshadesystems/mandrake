@@ -38,3 +38,48 @@ impl EventBus {
         self.tx.subscribe()
     }
 }
+
+impl crate::app::AppState {
+    /// Persist and broadcast an event about any object.
+    pub async fn emit(
+        &self,
+        kind: &str,
+        object: mandrake_core::api::ObjectRef,
+        actor: Option<mandrake_core::Actor>,
+        data: Option<serde_json::Value>,
+    ) {
+        let at = mandrake_core::Timestamp::now();
+        let db_kind = kind.to_owned();
+        let db_object = object.clone();
+        let db_actor = actor.clone();
+        let db_data = data.clone();
+        let event_id = self
+            .db
+            .call(move |conn| {
+                conn.execute(
+                    "INSERT INTO events (at, kind, object_kind, object_id, object_name, actor, data) \
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                    rusqlite::params![
+                        at.to_rfc3339(),
+                        db_kind,
+                        db_object.kind,
+                        db_object.id.map(|i| i.to_string()),
+                        db_object.name,
+                        serde_json::to_string(&db_actor).ok(),
+                        db_data.as_ref().map(ToString::to_string),
+                    ],
+                )?;
+                Ok(conn.last_insert_rowid())
+            })
+            .await
+            .unwrap_or(0);
+        self.events.publish(Event {
+            id: event_id.to_string(),
+            at,
+            kind: kind.to_owned(),
+            object: Some(object),
+            actor,
+            data,
+        });
+    }
+}

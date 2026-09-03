@@ -1278,6 +1278,7 @@ dependencies = [
  "clap",
  "hyper",
  "hyper-util",
+ "mandrake-bhyve",
  "mandrake-core",
  "mandrake-images",
  "mandrake-net",

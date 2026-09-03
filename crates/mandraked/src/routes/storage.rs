@@ -127,7 +127,7 @@ async fn dataset_ids(state: &AppState, infos: &[DatasetInfo]) -> Vec<Id> {
     ids
 }
 
-async fn snapshot_ids(state: &AppState, infos: &[SnapshotInfo]) -> Vec<Id> {
+pub(crate) async fn snapshot_ids(state: &AppState, infos: &[SnapshotInfo]) -> Vec<Id> {
     let mut ids = Vec::with_capacity(infos.len());
     let mut assigned = false;
     for info in infos {
@@ -142,7 +142,7 @@ async fn snapshot_ids(state: &AppState, infos: &[SnapshotInfo]) -> Vec<Id> {
     ids
 }
 
-async fn metadata_for(state: &AppState, ids: &[Id]) -> ApiResult<HashMap<Id, Metadata>> {
+pub(crate) async fn metadata_for(state: &AppState, ids: &[Id]) -> ApiResult<HashMap<Id, Metadata>> {
     let ids = ids.to_vec();
     state
         .db

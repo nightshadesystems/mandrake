@@ -320,6 +320,17 @@ impl Zfs for ZfsCli {
         })
     }
 
+    fn destroy_snapshot_recursive<'a>(&'a self, name: &'a str) -> BoxFuture<'a, Result<()>> {
+        Box::pin(async move {
+            self.run(
+                Command::new("zfs")
+                    .args(["destroy", "-r", name])
+                    .privileged(),
+            )
+            .await
+        })
+    }
+
     fn rollback<'a>(&'a self, name: &'a str, discard_newer: bool) -> BoxFuture<'a, Result<()>> {
         Box::pin(async move {
             let mut cmd = Command::new("zfs").arg("rollback").privileged();

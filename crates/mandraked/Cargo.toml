@@ -16,6 +16,7 @@ name = "mandraked"
 path = "src/main.rs"
 
 [dependencies]
+mandrake-bhyve = { workspace = true }
 mandrake-core = { workspace = true }
 mandrake-images = { workspace = true }
 mandrake-zones = { workspace = true }

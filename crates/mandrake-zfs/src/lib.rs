@@ -69,6 +69,8 @@ pub trait Zfs: Send + Sync {
     ) -> BoxFuture<'a, Result<()>>;
     /// `zfs destroy dataset@name`.
     fn destroy_snapshot<'a>(&'a self, name: &'a str) -> BoxFuture<'a, Result<()>>;
+    /// `zfs destroy -r dataset@name`: the snapshot on every descendant too.
+    fn destroy_snapshot_recursive<'a>(&'a self, name: &'a str) -> BoxFuture<'a, Result<()>>;
     /// `zfs rollback [-r]`.
     fn rollback<'a>(&'a self, name: &'a str, discard_newer: bool) -> BoxFuture<'a, Result<()>>;
     /// `zfs clone snapshot target`.

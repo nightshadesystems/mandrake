@@ -95,7 +95,7 @@ fn valid_link_name(name: &str) -> bool {
 
 /// NICs must have valid names, sit on existing links of a kind that can
 /// carry a VNIC, and carry well-formed addresses.
-async fn validate_nics(state: &AppState, nics: &[ZoneNic]) -> ApiResult<()> {
+pub(crate) async fn validate_nics(state: &AppState, nics: &[ZoneNic]) -> ApiResult<()> {
     let net = state.net.clone();
     let links = state
         .links_cache
@@ -484,7 +484,7 @@ pub async fn delete_zone(
     if state.console_sessions.contains(&info.summary.name) {
         return Err(busy("a console session is attached; close it first"));
     }
-    let job = zones::start_delete(&state, id, &info, q.purge, &auth.actor).await?;
+    let job = zones::start_delete(&state, "zone", id, &info, q.purge, &auth.actor).await?;
     state
         .record(
             &auth.actor,
@@ -530,13 +530,17 @@ async fn lifecycle(
         }
         _ => {}
     }
-    let job = zones::start_lifecycle(state, id, &info.summary.name, op, &auth.actor).await?;
+    let job =
+        zones::start_lifecycle(state, "zone", id, &info.summary.name, op, &auth.actor).await?;
     state
         .record(
             &auth.actor,
             ctx,
-            Record::ok(op.kind(), ObjectRef::new("zone", id, &info.summary.name))
-                .after(json!({ "from": current, "job": job.id })),
+            Record::ok(
+                &op.kind_for("zone"),
+                ObjectRef::new("zone", id, &info.summary.name),
+            )
+            .after(json!({ "from": current, "job": job.id })),
         )
         .await?;
     Ok((StatusCode::ACCEPTED, Json(job)))

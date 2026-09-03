@@ -1,6 +1,8 @@
 //! Zones in the daemon (ADR-0012): identity through the `mandrake-id`
 //! attribute, the view joined from `zoneadm list` and `zonecfg export`,
-//! and the jobs that install, boot, stop, and remove zones.
+//! and the jobs that install, boot, stop, and remove zones. VMs are
+//! bhyve-brand zones and share the cache, the ids, and the lifecycle
+//! jobs; `family` names which API the object belongs to.
 
 use std::{collections::BTreeMap, time::Duration};
 
@@ -35,17 +37,14 @@ pub struct ZoneInfo {
     pub config: ZoneConfig,
 }
 
-/// Every zone of a managed brand, with configuration, cached briefly.
-pub async fn all_zones(state: &AppState) -> ApiResult<Vec<ZoneInfo>> {
+/// Every zone with a readable configuration, any brand, cached briefly.
+pub async fn cached_zones(state: &AppState) -> ApiResult<Vec<ZoneInfo>> {
     let zones = state.zones.clone();
     Ok(state
         .zones_cache
         .get_or(|| async move {
             let mut out = Vec::new();
             for summary in zones.list().await? {
-                if ZoneBrand::from_brand(&summary.brand).is_none() {
-                    continue;
-                }
                 match zones.config(&summary.name).await {
                     Ok(config) => out.push(ZoneInfo { summary, config }),
                     Err(e) => {
@@ -56,6 +55,24 @@ pub async fn all_zones(state: &AppState) -> ApiResult<Vec<ZoneInfo>> {
             Ok::<_, mandrake_zones::ZoneError>(out)
         })
         .await?)
+}
+
+/// The zones of the brands `/zones` manages.
+pub async fn all_zones(state: &AppState) -> ApiResult<Vec<ZoneInfo>> {
+    Ok(cached_zones(state)
+        .await?
+        .into_iter()
+        .filter(|z| ZoneBrand::from_brand(&z.summary.brand).is_some())
+        .collect())
+}
+
+/// The bhyve-brand zones, which `/vms` manages.
+pub async fn all_vms(state: &AppState) -> ApiResult<Vec<ZoneInfo>> {
+    Ok(cached_zones(state)
+        .await?
+        .into_iter()
+        .filter(|z| z.summary.brand == mandrake_bhyve::BRAND)
+        .collect())
 }
 
 /// Forget cached zone listings after a change.
@@ -201,12 +218,12 @@ pub fn spec_from(config: &ZoneConfig) -> ZoneSpec {
     }
 }
 
-/// Publish `zone.state`.
-pub async fn emit_state(state: &AppState, id: Id, name: &str, zone_state: ZoneState) {
+/// Publish `<family>.state`.
+pub async fn emit_state(state: &AppState, family: &str, id: Id, name: &str, zone_state: ZoneState) {
     state
         .emit(
-            "zone.state",
-            ObjectRef::new("zone", id, name),
+            &format!("{family}.state"),
+            ObjectRef::new(family, id, name),
             None,
             Some(json!({ "state": zone_state })),
         )
@@ -214,14 +231,14 @@ pub async fn emit_state(state: &AppState, id: Id, name: &str, zone_state: ZoneSt
 }
 
 /// The current state of a zone by name, uncached.
-async fn current_state(state: &AppState, name: &str) -> ApiResult<Option<ZoneState>> {
+pub async fn current_state(state: &AppState, name: &str) -> ApiResult<Option<ZoneState>> {
     let list = state.zones.list().await?;
     Ok(list.into_iter().find(|z| z.name == name).map(|z| z.state))
 }
 
 /// Poll until the zone reaches one of `want`, or is gone when `want` is
 /// empty.
-async fn wait_for(
+pub async fn wait_for(
     state: &AppState,
     name: &str,
     want: &[ZoneState],
@@ -307,13 +324,13 @@ pub async fn start_install(
                     return Err(ApiError::from(e));
                 }
                 invalidate(&job_state);
-                emit_state(&job_state, id, &name, ZoneState::Installed).await;
+                emit_state(&job_state, "zone", id, &name, ZoneState::Installed).await;
                 if plan.boot {
                     job.progress(0.8, "booting").await;
                     job_state.zones.boot(&name).await?;
                     wait_for(&job_state, &name, &[ZoneState::Running]).await?;
                     invalidate(&job_state);
-                    emit_state(&job_state, id, &name, ZoneState::Running).await;
+                    emit_state(&job_state, "zone", id, &name, ZoneState::Running).await;
                     return Ok("installed and running".to_owned());
                 }
                 Ok("installed".to_owned())
@@ -334,33 +351,42 @@ pub enum Lifecycle {
     },
     /// `zoneadm shutdown -r`.
     Restart,
+    /// `zoneadm halt` then `boot`, without asking the guest.
+    Reset,
 }
 
 impl Lifecycle {
-    /// The job kind.
-    pub const fn kind(self) -> &'static str {
+    /// The verb.
+    pub const fn verb(self) -> &'static str {
         match self {
-            Self::Start => "zone.start",
-            Self::Stop { .. } => "zone.stop",
-            Self::Restart => "zone.restart",
+            Self::Start => "start",
+            Self::Stop { .. } => "stop",
+            Self::Restart => "restart",
+            Self::Reset => "reset",
         }
+    }
+
+    /// The job and audit kind for a family: `zone.start`, `vm.reset`, ...
+    pub fn kind_for(self, family: &str) -> String {
+        format!("{family}.{}", self.verb())
     }
 }
 
 /// Run a lifecycle job and wait for the resulting state.
 pub async fn start_lifecycle(
     state: &AppState,
+    family: &'static str,
     id: Id,
     name: &str,
     op: Lifecycle,
     actor: &Actor,
 ) -> ApiResult<Job> {
-    let target = ObjectRef::new("zone", id, name);
+    let target = ObjectRef::new(family, id, name);
     let job_state = state.clone();
     let name = name.to_owned();
     state
         .start_job(
-            op.kind(),
+            &op.kind_for(family),
             Some(target),
             Some(actor),
             move |job| async move {
@@ -385,12 +411,20 @@ pub async fn start_lifecycle(
                         job_state.zones.shutdown(&name, true).await?;
                         ("running", ZoneState::Running)
                     }
+                    Lifecycle::Reset => {
+                        job.progress(0.2, "halting").await;
+                        job_state.zones.halt(&name).await?;
+                        wait_for(&job_state, &name, &[ZoneState::Installed]).await?;
+                        job.progress(0.6, "booting").await;
+                        job_state.zones.boot(&name).await?;
+                        ("running", ZoneState::Running)
+                    }
                 };
                 invalidate(&job_state);
                 let reached = wait_for(&job_state, &name, &[want]).await?;
                 invalidate(&job_state);
                 if let Some(s) = reached {
-                    emit_state(&job_state, id, &name, s).await;
+                    emit_state(&job_state, family, id, &name, s).await;
                 }
                 Ok(message.to_owned())
             },
@@ -402,18 +436,19 @@ pub async fn start_lifecycle(
 /// with `purge` the dataset too.
 pub async fn start_delete(
     state: &AppState,
+    family: &'static str,
     id: Id,
     info: &ZoneInfo,
     purge: bool,
     actor: &Actor,
 ) -> ApiResult<Job> {
     let name = info.summary.name.clone();
-    let target = ObjectRef::new("zone", id, &name);
+    let target = ObjectRef::new(family, id, &name);
     let dataset = dataset_of(&info.summary.zonepath).map(|(_, d)| d);
     let job_state = state.clone();
     state
         .start_job(
-            "zone.delete",
+            &format!("{family}.delete"),
             Some(target),
             Some(actor),
             move |job| async move {
@@ -455,8 +490,8 @@ pub async fn start_delete(
                     .await;
                 job_state
                     .emit(
-                        "zone.deleted",
-                        ObjectRef::new("zone", id, &name),
+                        &format!("{family}.deleted"),
+                        ObjectRef::new(family, id, &name),
                         None,
                         Some(json!({ "purged": purge })),
                     )

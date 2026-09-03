@@ -625,6 +625,34 @@ impl Zfs for FakeZfs {
         })
     }
 
+    fn destroy_snapshot_recursive<'a>(&'a self, name: &'a str) -> BoxFuture<'a, Result<()>> {
+        Box::pin(async move {
+            let mut s = self.lock();
+            let Some((dataset, short)) = name.split_once('@') else {
+                return Err(tool_error(&format!("invalid snapshot name: {name}")));
+            };
+            if !s.snapshots.contains_key(name) {
+                return Err(tool_error(&format!(
+                    "cannot open '{name}': dataset does not exist"
+                )));
+            }
+            let prefix = format!("{dataset}/");
+            let doomed: Vec<String> = s
+                .snapshots
+                .keys()
+                .filter(|k| {
+                    let (d, sn) = k.split_once('@').unwrap_or((k, ""));
+                    sn == short && (d == dataset || d.starts_with(&prefix))
+                })
+                .cloned()
+                .collect();
+            for k in doomed {
+                s.snapshots.remove(&k);
+            }
+            Ok(())
+        })
+    }
+
     fn rollback<'a>(&'a self, name: &'a str, discard_newer: bool) -> BoxFuture<'a, Result<()>> {
         Box::pin(async move {
             let mut s = self.lock();
@@ -679,6 +707,7 @@ impl Zfs for FakeZfs {
             let mut d = dataset(target, kind);
             d.origin = Some(snapshot.to_owned());
             d.referenced = src.referenced;
+            d.volsize = s.datasets.get(src.dataset()).and_then(|o| o.volsize);
             s.datasets.insert(target.to_owned(), d);
             if let Some(sn) = s.snapshots.get_mut(snapshot) {
                 sn.clones.push(target.to_owned());

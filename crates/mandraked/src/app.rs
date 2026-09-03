@@ -216,6 +216,7 @@ pub fn api_router(state: AppState) -> Router {
         .merge(routes::network::router())
         .merge(routes::images::router())
         .merge(routes::zones::router())
+        .merge(routes::vms::router())
         .layer(middleware::from_fn_with_state(
             state.clone(),
             idempotency::layer,

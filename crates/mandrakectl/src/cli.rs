@@ -91,6 +91,9 @@ pub enum Command {
     /// Native and lx zones.
     #[command(subcommand)]
     Zones(ZonesCmd),
+    /// bhyve VMs.
+    #[command(subcommand)]
+    Vms(VmsCmd),
 }
 
 /// Paging flags shared by list commands.
@@ -973,4 +976,245 @@ pub struct ZoneUpdateArgs {
     pub resolvers: Vec<String>,
     #[command(flatten)]
     pub metadata: MetadataArgs,
+}
+
+// ------------------------------------------------------------ vms
+
+/// `mandrakectl vms ...`
+#[derive(Debug, Subcommand)]
+pub enum VmsCmd {
+    /// List VMs (GET /vms).
+    List {
+        /// A zoneadm state.
+        #[arg(long)]
+        state: Option<String>,
+        #[command(flatten)]
+        paging: Paging,
+    },
+    /// Show one VM (GET /vms/{id}).
+    Get {
+        /// VM id.
+        id: Id,
+    },
+    /// Create a VM; prints the job (POST /vms). Operator.
+    Create(VmCreateArgs),
+    /// Change configuration or metadata (PATCH /vms/{id}). Operator.
+    Update(VmUpdateArgs),
+    /// Delete a VM; prints the job (DELETE /vms/{id}). Operator.
+    Delete {
+        /// VM id.
+        id: Id,
+        /// Also destroy its dataset and every disk.
+        #[arg(long)]
+        purge: bool,
+    },
+    /// Boot a VM; prints the job (POST /vms/{id}/start). Operator.
+    Start {
+        /// VM id.
+        id: Id,
+    },
+    /// Shut a VM down; prints the job (POST /vms/{id}/stop). Operator.
+    Stop {
+        /// VM id.
+        id: Id,
+        /// Power off instead of an ACPI shutdown.
+        #[arg(long)]
+        force: bool,
+    },
+    /// Reboot a VM; prints the job (POST /vms/{id}/restart). Operator.
+    Restart {
+        /// VM id.
+        id: Id,
+    },
+    /// Hard reset a VM; prints the job (POST /vms/{id}/reset). Operator.
+    Reset {
+        /// VM id.
+        id: Id,
+    },
+    /// Disks.
+    #[command(subcommand)]
+    Disk(VmDiskCmd),
+    /// ISOs.
+    #[command(subcommand)]
+    Cdrom(VmCdromCmd),
+    /// Snapshots of every disk at once.
+    #[command(subcommand)]
+    Snapshot(VmSnapshotCmd),
+}
+
+/// `mandrakectl vms create`
+// Each flag is an independent switch off a default; enums would only add
+// ceremony to the command line.
+#[allow(clippy::struct_excessive_bools)]
+#[derive(Debug, Args)]
+pub struct VmCreateArgs {
+    /// VM name.
+    pub name: String,
+    /// vCPUs (1-128).
+    #[arg(long, default_value_t = 2)]
+    pub vcpus: u32,
+    /// Memory (2G, 512M, or bytes); at least 128M.
+    #[arg(long, default_value = "2G")]
+    pub memory: String,
+    /// Firmware: uefi or uefi-csm.
+    #[arg(long, value_parser = ["uefi", "uefi-csm"])]
+    pub bootrom: Option<String>,
+    /// Turn ACPI off.
+    #[arg(long)]
+    pub no_acpi: bool,
+    /// Pool for the VM dataset; ignored when the boot disk is a clone.
+    #[arg(long)]
+    pub pool: Option<String>,
+    /// Clone this vm-raw image as the boot disk.
+    #[arg(
+        long,
+        conflicts_with = "boot_size",
+        required_unless_present = "boot_size"
+    )]
+    pub image: Option<Id>,
+    /// Blank boot disk of this size (20G); install from a --cdrom.
+    #[arg(long)]
+    pub boot_size: Option<String>,
+    /// An extra blank disk of this size; repeatable.
+    #[arg(long = "disk")]
+    pub disks: Vec<String>,
+    /// A vm-iso image to attach; repeatable.
+    #[arg(long = "cdrom")]
+    pub cdroms: Vec<Id>,
+    /// A NIC as NAME,OVER[,vid=N][,address=A/P][,gateway=G][,mac=M]. Repeatable.
+    #[arg(long = "nic")]
+    pub nics: Vec<String>,
+    /// No VNC display.
+    #[arg(long)]
+    pub no_vnc: bool,
+    /// Do not boot with the host.
+    #[arg(long)]
+    pub no_autoboot: bool,
+    /// Do not boot once created.
+    #[arg(long)]
+    pub no_start: bool,
+    #[command(flatten)]
+    pub metadata: MetadataArgs,
+}
+
+/// `mandrakectl vms update`
+#[derive(Debug, Args)]
+pub struct VmUpdateArgs {
+    /// VM id.
+    pub id: Id,
+    /// vCPUs.
+    #[arg(long)]
+    pub vcpus: Option<u32>,
+    /// Memory (4G, or bytes).
+    #[arg(long)]
+    pub memory: Option<String>,
+    /// Firmware: uefi or uefi-csm.
+    #[arg(long, value_parser = ["uefi", "uefi-csm"])]
+    pub bootrom: Option<String>,
+    /// ACPI: true or false.
+    #[arg(long)]
+    pub acpi: Option<bool>,
+    /// VNC display: true or false.
+    #[arg(long)]
+    pub vnc: Option<bool>,
+    /// Boot with the host: true or false.
+    #[arg(long)]
+    pub autoboot: Option<bool>,
+    /// Replace the NICs: NAME,OVER[,vid=N][,address=A/P][,gateway=G][,mac=M]. Repeatable.
+    #[arg(long = "nic", conflicts_with = "clear_nics")]
+    pub nics: Vec<String>,
+    /// Remove every NIC.
+    #[arg(long)]
+    pub clear_nics: bool,
+    #[command(flatten)]
+    pub metadata: MetadataArgs,
+}
+
+/// `mandrakectl vms disk ...`
+#[derive(Debug, Subcommand)]
+pub enum VmDiskCmd {
+    /// Add a disk (POST /vms/{id}/disks). Operator.
+    Add {
+        /// VM id.
+        id: Id,
+        /// Blank disk of this size (50G).
+        #[arg(long, conflicts_with = "image", required_unless_present = "image")]
+        size: Option<String>,
+        /// Clone this vm-raw image instead.
+        #[arg(long)]
+        image: Option<Id>,
+    },
+    /// Grow a disk (PATCH /vms/{id}/disks/{index}). Operator.
+    Resize {
+        /// VM id.
+        id: Id,
+        /// Disk slot.
+        index: u32,
+        /// New size; larger than now.
+        #[arg(long)]
+        size: String,
+    },
+    /// Detach a disk (DELETE /vms/{id}/disks/{index}). Operator.
+    Remove {
+        /// VM id.
+        id: Id,
+        /// Disk slot; not the boot disk.
+        index: u32,
+        /// Also destroy the volume.
+        #[arg(long)]
+        purge: bool,
+    },
+}
+
+/// `mandrakectl vms cdrom ...`
+#[derive(Debug, Subcommand)]
+pub enum VmCdromCmd {
+    /// Attach an ISO (POST /vms/{id}/cdroms). Operator.
+    Attach {
+        /// VM id.
+        id: Id,
+        /// A ready vm-iso image.
+        #[arg(long)]
+        image: Id,
+    },
+    /// Eject an ISO (DELETE /vms/{id}/cdroms/{index}). Operator.
+    Detach {
+        /// VM id.
+        id: Id,
+        /// Cdrom slot.
+        index: u32,
+    },
+}
+
+/// `mandrakectl vms snapshot ...`
+#[derive(Debug, Subcommand)]
+pub enum VmSnapshotCmd {
+    /// List snapshots (GET /vms/{id}/snapshots).
+    List {
+        /// VM id.
+        id: Id,
+    },
+    /// Take a snapshot (POST /vms/{id}/snapshots). Operator.
+    Create {
+        /// VM id.
+        id: Id,
+        /// Snapshot name.
+        name: String,
+        #[command(flatten)]
+        metadata: MetadataArgs,
+    },
+    /// Delete a snapshot (DELETE /vms/{id}/snapshots/{name}). Operator.
+    Delete {
+        /// VM id.
+        id: Id,
+        /// Snapshot name.
+        name: String,
+    },
+    /// Roll every disk back; the VM must be stopped (POST .../rollback). Operator.
+    Rollback {
+        /// VM id.
+        id: Id,
+        /// Snapshot name.
+        name: String,
+    },
 }

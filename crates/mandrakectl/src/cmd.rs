@@ -58,6 +58,7 @@ pub async fn run(cli: Cli) -> Result<(), Error> {
         Command::Network(cmd) => crate::network::run(&client, cmd, json).await?,
         Command::Images(cmd) => crate::images::run(&client, cmd, json).await?,
         Command::Zones(cmd) => crate::zones::run(&client, cmd, json).await?,
+        Command::Vms(cmd) => crate::vms::run(&client, cmd, json).await?,
     }
     Ok(())
 }

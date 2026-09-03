@@ -17,6 +17,7 @@ mod images;
 mod network;
 mod output;
 mod storage;
+mod vms;
 mod zones;
 
 use std::process::ExitCode;

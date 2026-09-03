@@ -259,6 +259,78 @@ and exercising zones and VMs. Each phase ends with a demo here (spec §13).
    The zone console is browser-only; on the host, `pfexec zlogin -C <name>`
    reaches the same console.
 
+### Phase 5 demo
+
+1. Rebuild and install as in Phase 2, or `pkg update` from the publisher.
+   The management profile gained `nc`; `pkg` refreshes `exec_attr`.
+   Confirm the brand attribute spellings against the bhyve brand on this
+   release before trusting a VM to it:
+
+   ```sh
+   man -M /usr/share/man bhyve   # zonecfg attrs: vcpus ram bootrom acpi vnc bootdisk diskN cdromN
+   ```
+
+   If any name differs, the mapping lives in
+   `crates/mandrake-bhyve/src/render.rs`, and the synthetic capture
+   `crates/mandrake-zones/testdata/zonecfg-export.bhyve.synthetic.txt`
+   should be replaced by a real one:
+
+   ```sh
+   pfexec build/tools/capture-testdata.sh zones
+   ```
+
+2. Import media. Under Images → Available, import a `vm-raw` image and a
+   `vm-iso` from the Phase 4 source, or import the OmniOS ISO straight
+   from a URL you vouch for:
+
+   ```sh
+   mandrakectl images import omnios r151054 --type vm-iso \
+     --url https://downloads.omnios.org/media/stable/omnios-r151054.iso \
+     --sha256 <hex digest from the download page>
+   ```
+
+3. Open VMs → New VM. Boot source: the ISO onto a 20 GiB blank disk;
+   sizing 2 vCPUs, 2 GiB, UEFI, VNC on; one NIC on the etherstub from the
+   Phase 3 demo. Finish opens the VM's page while the create job runs and
+   the state goes CONFIGURED → INSTALLED → RUNNING. On the host:
+
+   ```sh
+   zoneadm list -cv                       # brand bhyve
+   zonecfg -z <name> export               # attrs and device resources
+   zfs list -r <pool>/vms/<name>          # disk0 is a zvol
+   ls -l /<pool>/vms/<name>/root/tmp/vm.vnc
+   ```
+
+4. Open the Display tab: the installer appears in the browser through the
+   VNC relay; the VNC socket has no listener on any network address.
+   Install OmniOS, then Shut down from the page; the ACPI request stops
+   the guest cleanly. Open the Serial tab on the next boot: the console
+   login appears over `zlogin -C`.
+5. From the Disks tab add a 10 GiB disk and grow it to 20 GiB; from Media
+   eject the ISO. Both show in `zonecfg -z <name> export` at once and in
+   the guest after a reboot. Take a snapshot while running, then stop the
+   VM and roll back: every disk returns to it. Delete without purge keeps
+   `<pool>/vms/<name>`; with purge destroys it and every disk.
+6. The same from the CLI:
+
+   ```sh
+   mandrakectl vms create test --boot-size 20G --cdrom <iso id> \
+     --nic net0,stub0,address=10.0.0.6/24,gateway=10.0.0.1 --memory 2G
+   mandrakectl vms list
+   mandrakectl vms get <vm id>
+   mandrakectl vms disk add <vm id> --size 10G
+   mandrakectl vms disk resize <vm id> 1 --size 20G
+   mandrakectl vms cdrom detach <vm id> 0
+   mandrakectl vms snapshot create <vm id> clean
+   mandrakectl vms stop <vm id>
+   mandrakectl vms snapshot rollback <vm id> clean
+   mandrakectl vms delete <vm id> --purge
+   ```
+
+   A VM from an image instead: `mandrakectl vms create web --image <vm-raw
+   image id>`. The consoles are browser-only; on the host,
+   `pfexec zlogin -C <name>` reaches the serial console.
+
 ## Test conventions
 
 - Parsers are unit-tested against captured real output in

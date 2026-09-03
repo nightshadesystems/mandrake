@@ -1,0 +1,4 @@
+0:global:running:/:0f2a0c5e-7b1e-4c5a-9d2f-1a2b3c4d5e6f:ipkg:shared
+1:web:running:/tank/zones/web:6f1d2c3b-4a59-4e8f-9c7d-2b3c4d5e6f70:lx:excl
+-:build:installed:/rpool/zones/build:7a2e3d4c-5b6a-4f9e-8d7c-3c4d5e6f7a81:ipkg:excl
+-:vm0:configured:/tank/vms/vm0::bhyve:excl

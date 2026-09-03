@@ -1,0 +1,8 @@
+create -b
+set brand=ipkg
+set zonepath=/rpool/zones/build
+set autoboot=false
+set ip-type=exclusive
+add dataset
+set name=tank/data/build
+end

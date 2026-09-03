@@ -5,7 +5,7 @@
 # you want represented; commit the results under crates/*/testdata/ and
 # delete the matching *.synthetic.txt files.
 #
-#   capture-testdata.sh [-o DIR] [zfs|net|all]
+#   capture-testdata.sh [-o DIR] [zfs|net|zones|all]
 #
 # Each capture is written verbatim to <name>.<hostname>.txt with a
 # <name>.<hostname>.txt.meta sidecar recording host, release, date, and
@@ -82,10 +82,18 @@ capture_net() {
     capture mandrake-net route-p-show route -p show
 }
 
+capture_zones() {
+    capture mandrake-zones zoneadm-list-pc zoneadm list -pc
+    for z in $(zoneadm list -pc | cut -d: -f2 | grep -v "^global$"); do
+        capture mandrake-zones "zonecfg-export.$z" zonecfg -z "$z" export
+    done
+}
+
 case $what in
     zfs) capture_zfs ;;
     net) capture_net ;;
-    all) capture_zfs; capture_net ;;
-    *) echo "capture-testdata: unknown set '$what' (zfs|net|all)" >&2; exit 2 ;;
+    zones) capture_zones ;;
+    all) capture_zfs; capture_net; capture_zones ;;
+    *) echo "capture-testdata: unknown set '$what' (zfs|net|zones|all)" >&2; exit 2 ;;
 esac
 echo "done; review the files, then commit them and delete the *.synthetic.txt they replace"

@@ -1,0 +1,38 @@
+create -b
+set brand=lx
+set zonepath=/tank/zones/web
+set autoboot=true
+set ip-type=exclusive
+add anet
+set linkname=net0
+set lower-link=stub0
+set allowed-address=10.0.0.5/24
+set defrouter=10.0.0.1
+set mac-address=02:08:20:a1:b2:c3
+set vlan-id=20
+end
+add capped-cpu
+set ncpus=1.5
+end
+add capped-memory
+set physical=2G
+end
+add rctl
+set name=zone.max-lwps
+add value (priv=privileged,limit=2000,action=deny)
+end
+add attr
+set name=kernel-version
+set type=string
+set value=5.10.0
+end
+add attr
+set name=mandrake-id
+set type=string
+set value="0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a60"
+end
+add attr
+set name=hostname
+set type=string
+set value="web"
+end

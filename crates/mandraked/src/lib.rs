@@ -33,5 +33,6 @@ pub mod serve;
 pub mod socket;
 pub mod tls;
 pub mod vms;
+pub mod vnc;
 pub mod zone_console;
 pub mod zones;

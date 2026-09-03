@@ -10,3 +10,4 @@ Mandrake Management:solaris:cmd:::/usr/sbin/route:uid=0
 Mandrake Management:solaris:cmd:::/usr/sbin/zlogin:uid=0
 Mandrake Management:solaris:cmd:::/usr/bin/chown:uid=0
 Mandrake Management:solaris:cmd:::/usr/bin/dd:uid=0
+Mandrake Management:solaris:cmd:::/usr/bin/nc:uid=0

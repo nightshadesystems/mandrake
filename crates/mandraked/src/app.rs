@@ -86,6 +86,8 @@ pub struct Inner {
     pub zones_cache: TtlCache<Vec<crate::zones::ZoneInfo>>,
     /// Which zones have a console attached.
     pub console_sessions: crate::zone_console::ConsoleSessions,
+    /// Which VMs have a VNC relay attached.
+    pub vnc_sessions: crate::zone_console::ConsoleSessions,
 }
 
 impl std::ops::Deref for AppState {
@@ -154,6 +156,7 @@ impl AppState {
             zones,
             zones_cache: TtlCache::new(LIST_TTL),
             console_sessions: crate::zone_console::ConsoleSessions::default(),
+            vnc_sessions: crate::zone_console::ConsoleSessions::default(),
         })))
     }
 }

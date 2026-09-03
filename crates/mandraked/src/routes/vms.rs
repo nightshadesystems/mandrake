@@ -32,6 +32,7 @@ use crate::{
     error::{ApiError, ApiResult},
     images, metadata,
     vms::{self, CreatePlan, DiskPlan, FAMILY, VmInfo},
+    vnc, zone_console,
     zones::{self, Lifecycle},
 };
 
@@ -44,6 +45,8 @@ pub fn router() -> Router<AppState> {
         .route("/vms/{id}/stop", post(stop_vm))
         .route("/vms/{id}/restart", post(restart_vm))
         .route("/vms/{id}/reset", post(reset_vm))
+        .route("/vms/{id}/serial", get(zone_console::attach_vm))
+        .route("/vms/{id}/vnc", get(vnc::attach))
         .route("/vms/{id}/disks", post(add_disk))
         .route(
             "/vms/{id}/disks/{index}",
@@ -475,7 +478,7 @@ pub async fn delete_vm(
     auth.require(Role::Operator)?;
     let (id, info) = vms::find_vm(&state, id).await?;
     let name = info.zone.summary.name.clone();
-    if state.console_sessions.contains(&name) {
+    if state.console_sessions.contains(&name) || state.vnc_sessions.contains(&name) {
         return Err(busy("a console session is attached; close it first"));
     }
     let job = zones::start_delete(&state, FAMILY, id, &info.zone, q.purge, &auth.actor).await?;

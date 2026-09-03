@@ -1,4 +1,4 @@
-//! `GET /zones/{id}/console`: the zone console over a WebSocket, backed by
+//! `GET /zones/{id}/console` and `GET /vms/{id}/serial`: the zone console over a WebSocket, backed by
 //! `pfexec zlogin -C` under a pseudo-terminal (ADR-0012).
 //!
 //! Server frames are terminal output. Client text or binary frames are
@@ -27,7 +27,7 @@ use crate::{
     app::AppState,
     auth::Auth,
     error::{ApiError, ApiResult},
-    zones,
+    vms, zones,
 };
 
 /// The escape character handed to `zlogin -e`: Ctrl-], so `~.` typed
@@ -102,9 +102,39 @@ pub async fn attach(
     auth.require(Role::Operator)?;
     let (id, info) = zones::find_zone(&state, id).await?;
     let name = info.summary.name.clone();
+    attach_named(state, &auth, ws, &q, "zone.console", id, name)
+}
+
+/// `GET /vms/{id}/serial`: the same console for a bhyve zone, where
+/// `zlogin -C` is the guest's serial port.
+pub async fn attach_vm(
+    State(state): State<AppState>,
+    auth: Auth,
+    Path(id): Path<Id>,
+    Query(q): Query<ConsoleQuery>,
+    ws: WebSocketUpgrade,
+) -> ApiResult<Response> {
+    auth.require(Role::Operator)?;
+    let (id, info) = vms::find_vm(&state, id).await?;
+    let name = info.zone.summary.name.clone();
+    attach_named(state, &auth, ws, &q, "vm.serial", id, name)
+}
+
+/// Claim the session for `name` and upgrade; `event` is emitted with
+/// `attached` true and false around the session.
+fn attach_named(
+    state: AppState,
+    auth: &Auth,
+    ws: WebSocketUpgrade,
+    q: &ConsoleQuery,
+    event: &'static str,
+    id: Id,
+    name: String,
+) -> ApiResult<Response> {
+    let family = event.split('.').next().unwrap_or("zone");
     if !state.console_sessions.claim(&name) {
         return Err(ApiError::typed(StatusCode::CONFLICT, "busy", "Conflict")
-            .detail("a console session is already attached to this zone"));
+            .detail("a console session is already attached"));
     }
     let size = Size {
         cols: q.cols.unwrap_or(80).clamp(20, 500),
@@ -114,8 +144,8 @@ pub async fn attach(
     Ok(ws.on_upgrade(move |socket| async move {
         state
             .emit(
-                "zone.console",
-                ObjectRef::new("zone", id, &name),
+                event,
+                ObjectRef::new(family, id, &name),
                 Some(actor),
                 Some(json!({ "attached": true })),
             )
@@ -124,8 +154,8 @@ pub async fn attach(
         state.console_sessions.release(&name);
         state
             .emit(
-                "zone.console",
-                ObjectRef::new("zone", id, &name),
+                event,
+                ObjectRef::new(family, id, &name),
                 None,
                 Some(json!({ "attached": false })),
             )

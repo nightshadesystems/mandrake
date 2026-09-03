@@ -2,6 +2,7 @@ import { createBrowserRouter, RouterProvider } from 'react-router';
 
 import { Audit } from './pages/Audit.tsx';
 import { Dashboard } from './pages/Dashboard.tsx';
+import { Images } from './pages/Images.tsx';
 import { Login } from './pages/Login.tsx';
 import { Network } from './pages/Network.tsx';
 import { NotYet } from './pages/NotYet.tsx';
@@ -16,6 +17,7 @@ const router = createBrowserRouter([
     Component: Shell,
     children: [
       { index: true, Component: Dashboard },
+      { path: 'images', Component: Images },
       { path: 'network', Component: Network },
       { path: 'storage', Component: Storage },
       { path: 'system/users', Component: Users },

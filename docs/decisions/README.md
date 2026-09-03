@@ -23,3 +23,4 @@ Use [0000-template.md](0000-template.md) for new records.
 | [0011](0011-storage-and-network-model.md) | Storage and network drivers: identity, protection, jobs, testing | Accepted |
 | [0012](0012-images-and-zones-model.md) | Images and zones: storage layout, signed sources, identity, jobs, console | Accepted |
 | [0013](0013-bhyve-vm-model.md) | bhyve VMs: layout, brand rendering, disks and snapshots, consoles | Accepted |
+| [0014](0014-installer-and-first-boot.md) | Installer answers, first boot, and the management path | Accepted |

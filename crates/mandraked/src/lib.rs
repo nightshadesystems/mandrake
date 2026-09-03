@@ -32,3 +32,5 @@ pub mod serve;
 #[cfg(unix)]
 pub mod socket;
 pub mod tls;
+pub mod zone_console;
+pub mod zones;

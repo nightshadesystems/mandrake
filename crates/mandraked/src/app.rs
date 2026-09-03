@@ -18,6 +18,7 @@ use mandrake_core::Id;
 use mandrake_images::Importer;
 use mandrake_net::{AddressInfo, LinkInfo, Net, RouteInfo};
 use mandrake_zfs::{DatasetInfo, PoolInfo, SnapshotInfo, Zfs};
+use mandrake_zones::Zones;
 use rusqlite::OptionalExtension;
 use tower::ServiceBuilder;
 use tower_http::{
@@ -79,6 +80,12 @@ pub struct Inner {
     pub routes_cache: TtlCache<Vec<RouteInfo>>,
     /// Image transport and store.
     pub importer: Importer,
+    /// Zone driver.
+    pub zones: Arc<dyn Zones>,
+    /// Cached zone listing with configurations.
+    pub zones_cache: TtlCache<Vec<crate::zones::ZoneInfo>>,
+    /// Which zones have a console attached.
+    pub console_sessions: crate::zone_console::ConsoleSessions,
 }
 
 impl std::ops::Deref for AppState {
@@ -106,6 +113,7 @@ impl AppState {
             login_limiter,
             zfs,
             net,
+            zones,
             importer,
             scan_poll,
             listen,
@@ -143,6 +151,9 @@ impl AppState {
             addresses_cache: TtlCache::new(LIST_TTL),
             routes_cache: TtlCache::new(LIST_TTL),
             importer,
+            zones,
+            zones_cache: TtlCache::new(LIST_TTL),
+            console_sessions: crate::zone_console::ConsoleSessions::default(),
         })))
     }
 }
@@ -204,6 +215,7 @@ pub fn api_router(state: AppState) -> Router {
         .merge(routes::storage::router())
         .merge(routes::network::router())
         .merge(routes::images::router())
+        .merge(routes::zones::router())
         .layer(middleware::from_fn_with_state(
             state.clone(),
             idempotency::layer,

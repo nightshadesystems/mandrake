@@ -11,6 +11,7 @@ pub mod storage;
 pub mod system;
 pub mod tokens;
 pub mod users;
+pub mod zones;
 
 use std::future::Future;
 

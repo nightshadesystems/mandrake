@@ -8,6 +8,7 @@ use mandrake_core::shell::{FailureKind, SystemRunner};
 use mandrake_images::{FakeStore, FakeTransport, HttpTransport, ImageError, Importer, ZfsStore};
 use mandrake_net::{FakeNet, Net, NetCli, NetError};
 use mandrake_zfs::{FakeZfs, Zfs, ZfsCli, ZfsError};
+use mandrake_zones::{FakeZones, ZoneError, Zones, ZonesCli};
 
 use crate::{auth::ratelimit::LoginLimiter, error::ApiError};
 
@@ -22,6 +23,8 @@ pub struct Options {
     pub zfs: Arc<dyn Zfs>,
     /// Network driver.
     pub net: Arc<dyn Net>,
+    /// Zone driver.
+    pub zones: Arc<dyn Zones>,
     /// Image transport and store.
     pub importer: Importer,
     /// How often a scan job polls the pool.
@@ -40,6 +43,7 @@ impl Options {
             login_limiter: LoginLimiter::default_login(),
             zfs: Arc::new(ZfsCli::new(runner.clone())),
             net: Arc::new(NetCli::new(runner.clone())),
+            zones: Arc::new(ZonesCli::new(runner.clone())),
             importer: Importer::new(
                 Arc::new(transport),
                 Arc::new(ZfsStore::new(runner, crate::images::STORE_OWNER)),
@@ -56,6 +60,7 @@ impl Options {
             login_limiter: LoginLimiter::default_login(),
             zfs: Arc::new(FakeZfs::typical()),
             net: Arc::new(FakeNet::typical()),
+            zones: Arc::new(FakeZones::typical()),
             importer: Importer::new(Arc::new(FakeTransport::new()), Arc::new(FakeStore::new())),
             scan_poll: Duration::from_millis(20),
             listen: None,
@@ -80,6 +85,13 @@ impl Options {
     #[must_use]
     pub fn with_net(mut self, net: Arc<dyn Net>) -> Self {
         self.net = net;
+        self
+    }
+
+    /// Replace the zone driver.
+    #[must_use]
+    pub fn with_zones(mut self, zones: Arc<dyn Zones>) -> Self {
+        self.zones = zones;
         self
     }
 
@@ -152,5 +164,15 @@ impl From<ImageError> for ApiError {
             other => other.to_string(),
         };
         driver_error(e.kind(), detail, "image", &e)
+    }
+}
+
+impl From<ZoneError> for ApiError {
+    fn from(e: ZoneError) -> Self {
+        let detail = match &e {
+            ZoneError::Command(c) => c.stderr().to_owned(),
+            other => other.to_string(),
+        };
+        driver_error(e.kind(), detail, "zone", &e)
     }
 }

@@ -6,3 +6,7 @@ Mandrake Management:solaris:cmd:::/usr/sbin/zfs:uid=0
 Mandrake Management:solaris:cmd:::/usr/sbin/zpool:uid=0
 Mandrake Management:solaris:cmd:::/usr/sbin/beadm:uid=0
 Mandrake Management:solaris:cmd:::/usr/sbin/svcadm:uid=0
+Mandrake Management:solaris:cmd:::/usr/sbin/route:uid=0
+Mandrake Management:solaris:cmd:::/usr/sbin/zlogin:uid=0
+Mandrake Management:solaris:cmd:::/usr/bin/chown:uid=0
+Mandrake Management:solaris:cmd:::/usr/bin/dd:uid=0

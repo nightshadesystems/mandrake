@@ -207,6 +207,58 @@ and exercising zones and VMs. Each phase ends with a demo here (spec §13).
    Every mutation lands in System → Audit log with the actor and the
    before/after summary.
 
+### Phase 4 demo
+
+1. Rebuild and install as in Phase 2, or `pkg update` from the publisher.
+   Capture zone output for the parsers once a zone exists:
+
+   ```sh
+   pfexec build/tools/capture-testdata.sh zones
+   ```
+
+2. Publish a source. On any machine with the built tools:
+
+   ```sh
+   mandrake-image-index keygen --out source.key
+   # manifest.json lists the files beside it: name, version, type, file, os
+   mandrake-image-index build manifest.json --key source.key
+   ```
+
+   Serve the directory (`index.json`, `index.json.sig`, and the payloads)
+   over HTTPS. An lx image is a gzip'd ZFS send stream of a Linux root
+   filesystem; `omnios-r151054.iso` is a `vm-iso`.
+3. In the console open Images → Sources → Add source with the URL and the
+   public key `keygen` printed. It shows VERIFIED with the image count.
+   Under Available, import the lx image; under Imported watch it move
+   through downloading, verifying, and importing to READY. On the host,
+   `zfs list -t all -r <pool>/images` shows the dataset and its `@image`
+   snapshot.
+4. Open Zones → New zone: brand lx, that image, one NIC on the etherstub
+   from the Phase 3 demo with an address and gateway, a 1 GiB memory cap.
+   Finish opens the zone's page while the install job runs; the state
+   moves from CONFIGURED to RUNNING. On the host, `zoneadm list -cv` and
+   `zonecfg -z <name> export` agree, and `zfs list` shows
+   `<pool>/zones/<name>` as a clone.
+5. Open the zone's Console tab: the lx console prompt appears in the
+   browser; log in and `ip addr` shows the NIC. Stop and Start from the
+   page; delete without purge keeps the dataset, with purge destroys it.
+6. The same from the CLI:
+
+   ```sh
+   mandrakectl images sources add lab https://images.example/lab/index.json --public-key <key>
+   mandrakectl images available
+   mandrakectl images import debian-12 20260901 --source <source id>
+   mandrakectl jobs get <job id>
+   mandrakectl zones create web --brand lx --image <image id> \
+     --nic net0,stub0,address=10.0.0.5/24,gateway=10.0.0.1 --memory 1G
+   mandrakectl zones list
+   mandrakectl zones stop <zone id>
+   mandrakectl zones delete <zone id> --purge
+   ```
+
+   The zone console is browser-only; on the host, `pfexec zlogin -C <name>`
+   reaches the same console.
+
 ## Test conventions
 
 - Parsers are unit-tested against captured real output in

@@ -56,6 +56,8 @@ pub async fn run(cli: Cli) -> Result<(), Error> {
         Command::Jobs(cmd) => jobs(&client, cmd, json).await?,
         Command::Storage(cmd) => crate::storage::run(&client, cmd, json).await?,
         Command::Network(cmd) => crate::network::run(&client, cmd, json).await?,
+        Command::Images(cmd) => crate::images::run(&client, cmd, json).await?,
+        Command::Zones(cmd) => crate::zones::run(&client, cmd, json).await?,
     }
     Ok(())
 }

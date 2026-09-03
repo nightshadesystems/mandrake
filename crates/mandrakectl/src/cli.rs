@@ -85,6 +85,12 @@ pub enum Command {
     /// Links, addresses, routes.
     #[command(subcommand)]
     Network(NetworkCmd),
+    /// Image catalogue and sources.
+    #[command(subcommand)]
+    Images(ImagesCmd),
+    /// Native and lx zones.
+    #[command(subcommand)]
+    Zones(ZonesCmd),
 }
 
 /// Paging flags shared by list commands.
@@ -720,4 +726,251 @@ pub enum RoutesCmd {
         /// Route id.
         id: Id,
     },
+}
+
+/// `images` subcommands.
+#[derive(Debug, Subcommand)]
+pub enum ImagesCmd {
+    /// List imported images (GET /images).
+    List {
+        /// zone-native, zone-lx, vm-raw, or vm-iso.
+        #[arg(long, value_parser = ["zone-native", "zone-lx", "vm-raw", "vm-iso"])]
+        r#type: Option<String>,
+        /// pending, downloading, verifying, importing, ready, or failed.
+        #[arg(long, value_parser = ["pending", "downloading", "verifying", "importing", "ready", "failed"])]
+        state: Option<String>,
+        #[command(flatten)]
+        paging: Paging,
+    },
+    /// Show one image (GET /images/{id}).
+    Get {
+        /// Image id.
+        id: Id,
+    },
+    /// What the sources offer (GET /images/available).
+    Available {
+        /// Only this source.
+        #[arg(long)]
+        source: Option<Id>,
+        /// Only this type.
+        #[arg(long, value_parser = ["zone-native", "zone-lx", "vm-raw", "vm-iso"])]
+        r#type: Option<String>,
+    },
+    /// Import an image; prints the job (POST /images/import). Operator.
+    Import {
+        /// Name as the source lists it, or your own for a URL import.
+        name: String,
+        /// Version.
+        version: String,
+        /// Pick from this verified source's catalogue.
+        #[arg(long, conflicts_with_all = ["url", "sha256"])]
+        source: Option<Id>,
+        /// Import directly from this URL (needs --sha256 and --type).
+        #[arg(long, requires = "sha256", requires = "type")]
+        url: Option<String>,
+        /// Hex sha256 of the payload, which you vouch for.
+        #[arg(long)]
+        sha256: Option<String>,
+        /// zone-native, zone-lx, vm-raw, or vm-iso (URL imports).
+        #[arg(long, value_parser = ["zone-native", "zone-lx", "vm-raw", "vm-iso"])]
+        r#type: Option<String>,
+        /// Pool; default the data pool with the most free space.
+        #[arg(long)]
+        pool: Option<String>,
+        #[command(flatten)]
+        metadata: MetadataArgs,
+    },
+    /// Change metadata (PATCH /images/{id}). Operator.
+    Update {
+        /// Image id.
+        id: Id,
+        #[command(flatten)]
+        metadata: MetadataArgs,
+    },
+    /// Delete an image (DELETE /images/{id}). Operator.
+    Delete {
+        /// Image id.
+        id: Id,
+    },
+    /// Image sources.
+    #[command(subcommand)]
+    Sources(SourcesCmd),
+}
+
+/// `images sources` subcommands.
+#[derive(Debug, Subcommand)]
+pub enum SourcesCmd {
+    /// List sources (GET /images/sources).
+    List,
+    /// Show one source (GET /images/sources/{id}).
+    Get {
+        /// Source id.
+        id: Id,
+    },
+    /// Add a source and fetch its index (POST /images/sources). Operator.
+    Add {
+        /// A name.
+        name: String,
+        /// URL of index.json.
+        url: String,
+        /// Base64 Ed25519 public key; without it the source is unverified.
+        #[arg(long)]
+        public_key: Option<String>,
+        /// Add it disabled.
+        #[arg(long)]
+        disabled: bool,
+    },
+    /// Change a source (PATCH /images/sources/{id}). Operator.
+    Update {
+        /// Source id.
+        id: Id,
+        /// New name (not for built-in sources).
+        #[arg(long)]
+        name: Option<String>,
+        /// New URL (not for built-in sources).
+        #[arg(long)]
+        url: Option<String>,
+        /// Set the public key.
+        #[arg(long, conflicts_with = "no_key")]
+        public_key: Option<String>,
+        /// Remove the public key, making the source unverified.
+        #[arg(long)]
+        no_key: bool,
+        /// Enable.
+        #[arg(long, conflicts_with = "disable")]
+        enable: bool,
+        /// Disable.
+        #[arg(long)]
+        disable: bool,
+    },
+    /// Remove a source (DELETE /images/sources/{id}). Operator.
+    Remove {
+        /// Source id.
+        id: Id,
+    },
+    /// Fetch the index now (POST /images/sources/{id}/refresh). Operator.
+    Refresh {
+        /// Source id.
+        id: Id,
+    },
+}
+
+/// `zones` subcommands.
+#[derive(Debug, Subcommand)]
+pub enum ZonesCmd {
+    /// List zones (GET /zones).
+    List {
+        /// ipkg, lipkg, sparse, or lx.
+        #[arg(long, value_parser = ["ipkg", "lipkg", "sparse", "lx"])]
+        brand: Option<String>,
+        /// A zoneadm state.
+        #[arg(long)]
+        state: Option<String>,
+        #[command(flatten)]
+        paging: Paging,
+    },
+    /// Show one zone (GET /zones/{id}).
+    Get {
+        /// Zone id.
+        id: Id,
+    },
+    /// Create and install a zone; prints the job (POST /zones). Operator.
+    Create(ZoneCreateArgs),
+    /// Change configuration or metadata (PATCH /zones/{id}). Operator.
+    Update(ZoneUpdateArgs),
+    /// Delete a zone; prints the job (DELETE /zones/{id}). Operator.
+    Delete {
+        /// Zone id.
+        id: Id,
+        /// Also destroy its datasets.
+        #[arg(long)]
+        purge: bool,
+    },
+    /// Boot a zone; prints the job (POST /zones/{id}/start). Operator.
+    Start {
+        /// Zone id.
+        id: Id,
+    },
+    /// Shut a zone down; prints the job (POST /zones/{id}/stop). Operator.
+    Stop {
+        /// Zone id.
+        id: Id,
+        /// Halt instead of a clean shutdown.
+        #[arg(long)]
+        force: bool,
+    },
+    /// Reboot a zone; prints the job (POST /zones/{id}/restart). Operator.
+    Restart {
+        /// Zone id.
+        id: Id,
+    },
+}
+
+/// Flags of `zones create`.
+#[derive(Debug, Args)]
+pub struct ZoneCreateArgs {
+    /// Zone name.
+    pub name: String,
+    /// ipkg, lipkg, sparse, or lx.
+    #[arg(long, value_parser = ["ipkg", "lipkg", "sparse", "lx"])]
+    pub brand: String,
+    /// Image to clone; required for lx.
+    #[arg(long)]
+    pub image: Option<Id>,
+    /// Pool for the zone dataset.
+    #[arg(long)]
+    pub pool: Option<String>,
+    /// A NIC as NAME,OVER[,vid=N][,address=A/P][,gateway=G][,mac=M]. Repeatable.
+    #[arg(long = "nic")]
+    pub nics: Vec<String>,
+    /// CPU cap, in CPUs (for example 1.5).
+    #[arg(long)]
+    pub cpu_cap: Option<f64>,
+    /// Memory cap (2G, 512M, or bytes).
+    #[arg(long)]
+    pub memory: Option<String>,
+    /// Do not boot with the host.
+    #[arg(long)]
+    pub no_autoboot: bool,
+    /// Do not boot after install.
+    #[arg(long)]
+    pub no_start: bool,
+    /// Hostname; default the zone name.
+    #[arg(long)]
+    pub hostname: Option<String>,
+    /// A resolver; repeatable.
+    #[arg(long = "resolver")]
+    pub resolvers: Vec<String>,
+    #[command(flatten)]
+    pub metadata: MetadataArgs,
+}
+
+/// Flags of `zones update`.
+#[derive(Debug, Args)]
+pub struct ZoneUpdateArgs {
+    /// Zone id.
+    pub id: Id,
+    /// Replace the NICs: NAME,OVER[,vid=N][,address=A/P][,gateway=G][,mac=M]. Repeatable.
+    #[arg(long = "nic", conflicts_with = "clear_nics")]
+    pub nics: Vec<String>,
+    /// Remove every NIC.
+    #[arg(long)]
+    pub clear_nics: bool,
+    /// CPU cap; `none` removes it.
+    #[arg(long)]
+    pub cpu_cap: Option<String>,
+    /// Memory cap; `none` removes it.
+    #[arg(long)]
+    pub memory: Option<String>,
+    /// Boot with the host: true or false.
+    #[arg(long)]
+    pub autoboot: Option<bool>,
+    /// Hostname.
+    #[arg(long)]
+    pub hostname: Option<String>,
+    /// Replace the resolvers; repeatable, or `none`.
+    #[arg(long = "resolver")]
+    pub resolvers: Vec<String>,
+    #[command(flatten)]
+    pub metadata: MetadataArgs,
 }

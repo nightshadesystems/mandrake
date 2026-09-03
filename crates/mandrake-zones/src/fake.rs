@@ -109,11 +109,11 @@ fn apply_spec(config: &mut ZoneConfig, spec: &ZoneSpec) {
     config.nics.clone_from(&spec.nics);
     config.cpu_cap = spec.cpu_cap;
     config.memory_cap = spec.memory_cap;
-    for k in parse::MANAGED_ATTRS {
-        if !spec.attrs.contains_key(k) {
-            config.attrs.remove(k);
-        }
-    }
+    config.devices.clone_from(&spec.devices);
+    config.fs.clone_from(&spec.fs);
+    config
+        .attrs
+        .retain(|k, _| !parse::is_managed_attr(k) || spec.attrs.contains_key(k));
     for (k, v) in &spec.attrs {
         config.attrs.insert(k.clone(), v.clone());
     }
@@ -323,6 +323,8 @@ mod tests {
             nics: Vec::new(),
             cpu_cap: None,
             memory_cap: None,
+            devices: Vec::new(),
+            fs: Vec::new(),
             attrs: BTreeMap::new(),
         }
     }

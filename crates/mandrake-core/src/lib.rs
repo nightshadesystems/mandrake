@@ -16,6 +16,7 @@ pub mod role;
 pub mod shell;
 pub mod storage;
 pub mod timestamp;
+pub mod vm;
 pub mod zone;
 
 pub use actor::{Actor, Via};

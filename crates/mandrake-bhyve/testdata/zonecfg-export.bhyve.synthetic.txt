@@ -1,0 +1,68 @@
+create -b
+set brand=bhyve
+set zonepath=/tank/vms/vm0
+set autoboot=true
+set ip-type=exclusive
+add anet
+set linkname=net0
+set lower-link=stub0
+set mac-address=02:08:20:11:22:33
+end
+add device
+set match=/dev/zvol/rdsk/tank/vms/vm0/disk0
+end
+add device
+set match=/dev/zvol/rdsk/tank/vms/vm0/disk1
+end
+add fs
+set dir=/tank/images/iso/6f1d2c3b-4a59-4e8f-9c7d-2b3c4d5e6f70.iso
+set special=/tank/images/iso/6f1d2c3b-4a59-4e8f-9c7d-2b3c4d5e6f70.iso
+set type=lofs
+add options ro
+add options nodevices
+end
+add attr
+set name=vcpus
+set type=string
+set value=2
+end
+add attr
+set name=ram
+set type=string
+set value=2048M
+end
+add attr
+set name=bootrom
+set type=string
+set value=BHYVE_RELEASE
+end
+add attr
+set name=acpi
+set type=string
+set value=on
+end
+add attr
+set name=vnc
+set type=string
+set value=on
+end
+add attr
+set name=bootdisk
+set type=string
+set value=tank/vms/vm0/disk0
+end
+add attr
+set name=disk1
+set type=string
+set value=tank/vms/vm0/disk1
+end
+add attr
+set name=cdrom
+set type=string
+set value=/tank/images/iso/6f1d2c3b-4a59-4e8f-9c7d-2b3c4d5e6f70.iso
+end
+add attr
+set name=mandrake-id
+set type=string
+set value="0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a70"
+end

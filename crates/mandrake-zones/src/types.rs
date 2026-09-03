@@ -97,6 +97,19 @@ pub struct ZoneSummary {
     pub exclusive_ip: bool,
 }
 
+/// A zonecfg `fs` resource.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ZoneFs {
+    /// Mount point inside the zone.
+    pub dir: String,
+    /// What is mounted.
+    pub special: String,
+    /// Filesystem type, for example `lofs`.
+    pub type_: String,
+    /// Mount options.
+    pub options: Vec<String>,
+}
+
 /// A zone's configuration as `zonecfg export` describes it.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ZoneConfig {
@@ -120,6 +133,10 @@ pub struct ZoneConfig {
     pub attrs: BTreeMap<String, String>,
     /// Delegated datasets.
     pub datasets: Vec<String>,
+    /// `device` resources, by match pattern.
+    pub devices: Vec<String>,
+    /// `fs` resources.
+    pub fs: Vec<ZoneFs>,
     /// Resources Mandrake does not model, kept verbatim for reference.
     pub other: Vec<String>,
 }
@@ -141,6 +158,10 @@ pub struct ZoneSpec {
     pub cpu_cap: Option<f64>,
     /// Memory cap in bytes.
     pub memory_cap: Option<u64>,
+    /// `device` resources, replaced wholesale on update.
+    pub devices: Vec<String>,
+    /// `fs` resources, replaced wholesale on update.
+    pub fs: Vec<ZoneFs>,
     /// String attributes to set. On update, managed keys absent here are
     /// removed (see [`crate::parse::MANAGED_ATTRS`]).
     pub attrs: BTreeMap<String, String>,

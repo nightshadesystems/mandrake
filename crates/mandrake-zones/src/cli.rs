@@ -208,6 +208,8 @@ mod tests {
             }],
             cpu_cap: None,
             memory_cap: None,
+            devices: Vec::new(),
+            fs: Vec::new(),
             attrs: [("mandrake-id".to_owned(), "abc".to_owned())]
                 .into_iter()
                 .collect(),

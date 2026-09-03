@@ -334,6 +334,8 @@ pub async fn create_zone(
         nics: body.nics.clone(),
         cpu_cap: body.cpu_cap,
         memory_cap: body.memory_cap_bytes,
+        devices: Vec::new(),
+        fs: Vec::new(),
         attrs: zones::attrs(id, body.image_id, Some(&hostname), &body.resolvers),
     };
     state.zones.create(&spec).await?;

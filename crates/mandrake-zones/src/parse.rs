@@ -4,7 +4,7 @@
 
 use mandrake_core::zone::{ZoneNic, ZoneState};
 
-use crate::types::{ZoneConfig, ZoneError, ZoneSpec, ZoneSummary};
+use crate::types::{ZoneConfig, ZoneError, ZoneFs, ZoneSpec, ZoneSummary};
 
 /// Attributes Mandrake owns: set on create, rewritten on update, removed
 /// when absent from an update.
@@ -165,6 +165,21 @@ fn finish_resource(cfg: &mut ZoneConfig, kind: &str, props: &[(String, String)],
                 cfg.datasets.push(name);
             }
         }
+        "device" => {
+            if let Some(m) = get("match") {
+                cfg.devices.push(m);
+            }
+        }
+        "fs" => cfg.fs.push(ZoneFs {
+            dir: get("dir").unwrap_or_default(),
+            special: get("special").unwrap_or_default(),
+            type_: get("type").unwrap_or_default(),
+            options: lines
+                .iter()
+                .filter_map(|l| l.strip_prefix("add options "))
+                .map(|o| o.trim().to_owned())
+                .collect(),
+        }),
         _ => cfg
             .other
             .push(format!("add {kind}; {}; end", lines.join("; "))),
@@ -203,6 +218,56 @@ fn cap_commands(spec: &ZoneSpec, out: &mut Vec<String>) {
     }
 }
 
+/// Whether an attribute is one Mandrake writes: the managed zone attributes,
+/// or one of the bhyve brand's (`vcpus`, `ram`, `bootrom`, `acpi`, `vnc`,
+/// `bootdisk`, `disk<N>`, `cdrom<N>`, ...). Those absent from an update are
+/// removed; `mandrake-*` attributes are never touched that way.
+pub fn is_managed_attr(key: &str) -> bool {
+    if MANAGED_ATTRS.contains(&key) {
+        return true;
+    }
+    if matches!(
+        key,
+        "vcpus"
+            | "ram"
+            | "bootrom"
+            | "acpi"
+            | "vnc"
+            | "xhci"
+            | "bootdisk"
+            | "extra"
+            | "rng"
+            | "hostbridge"
+    ) {
+        return true;
+    }
+    ["disk", "cdrom"].iter().any(|p| {
+        key.strip_prefix(p)
+            .is_some_and(|rest| rest.bytes().all(|b| b.is_ascii_digit()))
+    })
+}
+
+fn device_commands(spec: &ZoneSpec, out: &mut Vec<String>) {
+    for m in &spec.devices {
+        out.push("add device".to_owned());
+        out.push(format!("set match={m}"));
+        out.push("end".to_owned());
+    }
+}
+
+fn fs_commands(spec: &ZoneSpec, out: &mut Vec<String>) {
+    for f in &spec.fs {
+        out.push("add fs".to_owned());
+        out.push(format!("set dir={}", f.dir));
+        out.push(format!("set special={}", f.special));
+        out.push(format!("set type={}", f.type_));
+        for o in &f.options {
+            out.push(format!("add options {o}"));
+        }
+        out.push("end".to_owned());
+    }
+}
+
 fn attr_add(key: &str, value: &str, out: &mut Vec<String>) {
     out.push("add attr".to_owned());
     out.push(format!("set name={key}"));
@@ -225,6 +290,8 @@ pub fn render_create(spec: &ZoneSpec) -> Vec<String> {
         nic_commands(nic, &mut out);
     }
     cap_commands(spec, &mut out);
+    device_commands(spec, &mut out);
+    fs_commands(spec, &mut out);
     for (k, v) in &spec.attrs {
         attr_add(k, v, &mut out);
     }
@@ -250,6 +317,14 @@ pub fn render_update(current: &ZoneConfig, spec: &ZoneSpec) -> Vec<String> {
         out.push("remove -F capped-memory".to_owned());
     }
     cap_commands(spec, &mut out);
+    if !current.devices.is_empty() {
+        out.push("remove -F device".to_owned());
+    }
+    if !current.fs.is_empty() {
+        out.push("remove -F fs".to_owned());
+    }
+    device_commands(spec, &mut out);
+    fs_commands(spec, &mut out);
     for (k, v) in &spec.attrs {
         if current.attrs.contains_key(k) {
             out.push(format!("select attr name={k}"));
@@ -259,8 +334,8 @@ pub fn render_update(current: &ZoneConfig, spec: &ZoneSpec) -> Vec<String> {
             attr_add(k, v, &mut out);
         }
     }
-    for k in MANAGED_ATTRS {
-        if current.attrs.contains_key(k) && !spec.attrs.contains_key(k) {
+    for k in current.attrs.keys() {
+        if is_managed_attr(k) && !spec.attrs.contains_key(k) {
             out.push(format!("remove attr name={k}"));
         }
     }
@@ -381,6 +456,8 @@ mod tests {
             }],
             cpu_cap: Some(1.5),
             memory_cap: Some(2_147_483_648),
+            devices: Vec::new(),
+            fs: Vec::new(),
             attrs: [
                 ("mandrake-id".to_owned(), "abc".to_owned()),
                 ("hostname".to_owned(), "web".to_owned()),

@@ -195,6 +195,8 @@ pub fn spec_from(config: &ZoneConfig) -> ZoneSpec {
         nics: config.nics.clone(),
         cpu_cap: config.cpu_cap,
         memory_cap: config.memory_cap,
+        devices: config.devices.clone(),
+        fs: config.fs.clone(),
         attrs: config.attrs.clone(),
     }
 }

@@ -96,6 +96,22 @@ impl fmt::Display for Command {
     }
 }
 
+/// A pipeline as a shell would show it.
+pub fn pipeline_display(cmds: &[Command]) -> String {
+    cmds.iter()
+        .map(Command::display)
+        .collect::<Vec<_>>()
+        .join(" | ")
+}
+
+/// A pipeline without `pfexec` prefixes, for script matching.
+pub fn pipeline_plain(cmds: &[Command]) -> String {
+    cmds.iter()
+        .map(Command::plain)
+        .collect::<Vec<_>>()
+        .join(" | ")
+}
+
 /// What a program produced.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Output {
@@ -151,6 +167,9 @@ impl ShellError {
 pub trait Runner: Send + Sync {
     /// Run `cmd` to completion. A non-zero exit is `ShellError::Failed`.
     fn run<'a>(&'a self, cmd: &'a Command) -> BoxFuture<'a, Result<Output, ShellError>>;
+    /// Run `cmds` as a pipeline: each stage's stdout feeds the next's stdin and
+    /// the last stage's stdout is returned. Any failing stage fails the whole.
+    fn pipeline<'a>(&'a self, cmds: &'a [Command]) -> BoxFuture<'a, Result<Output, ShellError>>;
 }
 
 /// The real thing: spawns the program, `pfexec` first when privileged.
@@ -181,20 +200,28 @@ impl SystemRunner {
     }
 }
 
+impl SystemRunner {
+    /// The process for `cmd`, `pfexec` first when privileged, `LC_ALL=C`.
+    fn process(&self, cmd: &Command) -> tokio::process::Command {
+        let mut process = if cmd.privileged {
+            let mut p = tokio::process::Command::new(&self.pfexec);
+            p.arg(&cmd.program);
+            p
+        } else {
+            tokio::process::Command::new(&cmd.program)
+        };
+        process.args(&cmd.args);
+        process.env("LC_ALL", "C");
+        process.kill_on_drop(true);
+        process
+    }
+}
+
 impl Runner for SystemRunner {
     fn run<'a>(&'a self, cmd: &'a Command) -> BoxFuture<'a, Result<Output, ShellError>> {
         Box::pin(async move {
-            let mut process = if cmd.privileged {
-                let mut p = tokio::process::Command::new(&self.pfexec);
-                p.arg(&cmd.program);
-                p
-            } else {
-                tokio::process::Command::new(&cmd.program)
-            };
-            process.args(&cmd.args);
-            process.env("LC_ALL", "C");
+            let mut process = self.process(cmd);
             process.stdin(std::process::Stdio::null());
-            process.kill_on_drop(true);
             tracing::debug!(command = %cmd, "running");
             let output = process.output().await.map_err(|e| ShellError::Spawn {
                 command: cmd.display(),
@@ -217,6 +244,105 @@ impl Runner for SystemRunner {
             }
         })
     }
+
+    fn pipeline<'a>(&'a self, cmds: &'a [Command]) -> BoxFuture<'a, Result<Output, ShellError>> {
+        Box::pin(async move {
+            let line = pipeline_display(cmds);
+            if cmds.is_empty() {
+                return Err(ShellError::Spawn {
+                    command: line,
+                    reason: "empty pipeline".to_owned(),
+                });
+            }
+            tracing::debug!(command = %line, "running pipeline");
+            let last = cmds.len() - 1;
+            let mut previous: Option<std::process::Stdio> = None;
+            let mut waits = tokio::task::JoinSet::new();
+            for (i, cmd) in cmds.iter().enumerate() {
+                let mut process = self.process(cmd);
+                process.stdin(previous.take().unwrap_or_else(std::process::Stdio::null));
+                process.stdout(std::process::Stdio::piped());
+                process.stderr(std::process::Stdio::piped());
+                let mut child = process.spawn().map_err(|e| ShellError::Spawn {
+                    command: cmd.display(),
+                    reason: e.to_string(),
+                })?;
+                if i != last {
+                    let stdout = child.stdout.take().ok_or_else(|| ShellError::Spawn {
+                        command: cmd.display(),
+                        reason: "no stdout pipe".to_owned(),
+                    })?;
+                    previous = Some(stdio_from(stdout).map_err(|e| ShellError::Spawn {
+                        command: cmd.display(),
+                        reason: e.to_string(),
+                    })?);
+                }
+                waits.spawn(async move { (i, child.wait_with_output().await) });
+            }
+            let mut outputs: Vec<Option<std::process::Output>> =
+                (0..cmds.len()).map(|_| None).collect();
+            while let Some(joined) = waits.join_next().await {
+                let (i, result) = joined.map_err(|e| ShellError::Spawn {
+                    command: line.clone(),
+                    reason: e.to_string(),
+                })?;
+                let output = result.map_err(|e| ShellError::Spawn {
+                    command: line.clone(),
+                    reason: e.to_string(),
+                })?;
+                if let Some(slot) = outputs.get_mut(i) {
+                    *slot = Some(output);
+                }
+            }
+            let mut stderr = String::new();
+            let mut failed: Option<i32> = None;
+            for (cmd, output) in cmds.iter().zip(&outputs) {
+                let Some(output) = output else { continue };
+                let text = String::from_utf8_lossy(&output.stderr);
+                if !text.trim().is_empty() {
+                    stderr.push_str(&cmd.program);
+                    stderr.push_str(": ");
+                    stderr.push_str(text.trim());
+                    stderr.push('\n');
+                }
+                if !output.status.success() && failed.is_none() {
+                    failed = Some(output.status.code().unwrap_or(-1));
+                }
+            }
+            let stdout = outputs
+                .last()
+                .and_then(Option::as_ref)
+                .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+                .unwrap_or_default();
+            if let Some(status) = failed {
+                tracing::warn!(command = %line, status, stderr = %stderr.trim(), "pipeline failed");
+                return Err(ShellError::Failed {
+                    command: line,
+                    status,
+                    stderr: stderr.trim().to_owned(),
+                });
+            }
+            Ok(Output {
+                status: 0,
+                stdout,
+                stderr: stderr.trim().to_owned(),
+            })
+        })
+    }
+}
+
+/// A child's stdout as the next stage's stdin.
+fn stdio_from(stdout: tokio::process::ChildStdout) -> std::io::Result<std::process::Stdio> {
+    #[cfg(unix)]
+    {
+        let fd = stdout.into_owned_fd()?;
+        Ok(fd.into())
+    }
+    #[cfg(not(unix))]
+    {
+        drop(stdout);
+        Err(std::io::Error::other("pipelines need a Unix platform"))
+    }
 }
 
 /// A canned answer for the scripted runner.
@@ -236,6 +362,7 @@ pub struct Script {
 pub struct ScriptedRunner {
     scripts: Mutex<Vec<Script>>,
     calls: Mutex<Vec<Command>>,
+    pipelines: Mutex<Vec<String>>,
 }
 
 impl ScriptedRunner {
@@ -286,6 +413,11 @@ impl ScriptedRunner {
     pub fn lines(&self) -> Vec<String> {
         self.calls().iter().map(Command::display).collect()
     }
+
+    /// The pipelines run so far, in order, as a shell would show them.
+    pub fn pipeline_lines(&self) -> Vec<String> {
+        self.pipelines.lock().map(|p| p.clone()).unwrap_or_default()
+    }
 }
 
 impl Runner for ScriptedRunner {
@@ -302,6 +434,23 @@ impl Runner for ScriptedRunner {
             });
             found.unwrap_or(Err(ShellError::Unscripted {
                 command: cmd.display(),
+            }))
+        })
+    }
+
+    fn pipeline<'a>(&'a self, cmds: &'a [Command]) -> BoxFuture<'a, Result<Output, ShellError>> {
+        Box::pin(async move {
+            if let Ok(mut p) = self.pipelines.lock() {
+                p.push(pipeline_display(cmds));
+            }
+            let line = pipeline_plain(cmds);
+            let found = self.scripts.lock().ok().and_then(|s| {
+                s.iter()
+                    .find(|s| line.starts_with(&s.prefix))
+                    .map(|s| s.answer.clone())
+            });
+            found.unwrap_or(Err(ShellError::Unscripted {
+                command: pipeline_display(cmds),
             }))
         })
     }

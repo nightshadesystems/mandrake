@@ -1,6 +1,6 @@
 [package]
 name = "mandrake-images"
-description = "Image catalogue, fetch, verify, and import for Mandrake"
+description = "Image catalogue, signed sources, and ZFS import for Mandrake"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -10,7 +10,26 @@ repository.workspace = true
 homepage.workspace = true
 publish.workspace = true
 
+[[bin]]
+name = "mandrake-image-index"
+path = "src/bin/mandrake-image-index.rs"
+
 [dependencies]
+mandrake-core = { workspace = true }
+
+base64 = { workspace = true }
+clap = { workspace = true }
+ed25519-dalek = { workspace = true }
+rand = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+tempfile = { workspace = true }
+thiserror = { workspace = true }
+time = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
 
 [lints]
 workspace = true

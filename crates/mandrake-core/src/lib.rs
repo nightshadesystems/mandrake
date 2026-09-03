@@ -9,6 +9,7 @@
 pub mod actor;
 pub mod api;
 pub mod id;
+pub mod image;
 pub mod network;
 pub mod problem;
 pub mod role;

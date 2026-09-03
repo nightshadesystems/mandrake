@@ -1,8 +1,5 @@
 # testdata
 
-Captured real output from illumos tooling, used by parser unit tests. Each
-file is named `<command>.<variant>.txt` (for example `zoneadm-list-p.two-zones.txt`)
-and begins with a comment line recording the OmniOS release and the exact
-command that produced it.
-
-Never edit captured output by hand. Re-capture on the build host.
+`index.sample.json` is a hand-written source index in the format of
+ADR-0012, used by the index parser and signature tests. Signatures are
+generated inside the tests from fresh keys, so no key material is stored.

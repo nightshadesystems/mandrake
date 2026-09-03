@@ -1,0 +1,35 @@
+{
+  "name": "nightshade.systems",
+  "generated_at": "2026-09-01T12:00:00Z",
+  "images": [
+    {
+      "name": "debian-12",
+      "version": "20260901",
+      "type": "zone-lx",
+      "url": "debian-12-20260901.zfs.gz",
+      "sha256": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+      "size": 268435456,
+      "description": "Debian 12 root for lx zones",
+      "os": "debian-12",
+      "published_at": "2026-09-01T00:00:00Z"
+    },
+    {
+      "name": "omnios-r151054",
+      "version": "20260815",
+      "type": "vm-iso",
+      "url": "/isos/omnios-r151054.iso",
+      "sha256": "60303ae22b998861bce3b28f33eec1be758a213c86c93c076dbe9f558c11c752",
+      "size": 536870912,
+      "os": "omnios"
+    },
+    {
+      "name": "alpine-3.20",
+      "version": "3.20.3",
+      "type": "vm-raw",
+      "url": "https://cdn.example/alpine-3.20.3.raw.xz",
+      "sha256": "fd61a03af4f77d870fc21e05e7e80678095c92d808cfb3b5c279ee04c74aca13",
+      "size": 134217728,
+      "os": "alpine"
+    }
+  ]
+}

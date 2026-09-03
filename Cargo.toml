@@ -66,6 +66,9 @@ hyper = { version = "1", features = ["client", "server", "http1"] }
 hyper-util = { version = "0.1", features = ["tokio", "client-legacy", "http1", "server", "server-auto", "service"] }
 tempfile = "3"
 
+# Approved additions for Phase 4 (signed off 2026-09-02; ADR-0012).
+ed25519-dalek = "2"
+
 [workspace.lints.rust]
 unsafe_code = "forbid"
 missing_docs = "warn"

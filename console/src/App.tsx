@@ -9,6 +9,8 @@ import { NotYet } from './pages/NotYet.tsx';
 import { Shell } from './pages/Shell.tsx';
 import { Storage } from './pages/Storage.tsx';
 import { Users } from './pages/Users.tsx';
+import { Zones } from './pages/Zones.tsx';
+import { ZoneDetail } from './pages/zones/ZoneDetail.tsx';
 
 const router = createBrowserRouter([
   { path: '/login', Component: Login },
@@ -17,6 +19,8 @@ const router = createBrowserRouter([
     Component: Shell,
     children: [
       { index: true, Component: Dashboard },
+      { path: 'zones', Component: Zones },
+      { path: 'zones/:id', Component: ZoneDetail },
       { path: 'images', Component: Images },
       { path: 'network', Component: Network },
       { path: 'storage', Component: Storage },

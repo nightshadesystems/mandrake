@@ -34,6 +34,7 @@ import type { StackViewProps } from '../../design/types/stack-view/StackView';
 import type { TableProps } from '../../design/types/table/Table';
 import type { TabsProps } from '../../design/types/tabs/Tabs';
 import type { VerticalNavProps } from '../../design/types/vertical-nav/VerticalNav';
+import type { WizardProps } from '../../design/types/wizard/Wizard';
 
 import * as alert from '../../design/components/alert/Alert.jsx';
 import * as button from '../../design/components/button/Button.jsx';
@@ -54,6 +55,7 @@ import * as stackView from '../../design/components/stack-view/StackView.jsx';
 import * as table from '../../design/components/table/Table.jsx';
 import * as tabs from '../../design/components/tabs/Tabs.jsx';
 import * as verticalNav from '../../design/components/vertical-nav/VerticalNav.jsx';
+import * as wizard from '../../design/components/wizard/Wizard.jsx';
 
 function bind<P>(component: unknown): ComponentType<P> {
   return component as ComponentType<P>;
@@ -190,3 +192,5 @@ export const Dropdown = bind<DropdownProps & WithClass>(dropdown.Dropdown);
 
 export const Tabs = bind<TabsProps & WithClass>(tabs.Tabs);
 export const StackView = bind<StackViewProps>(stackView.StackView);
+
+export const Wizard = bind<WizardProps & WithClass>(wizard.Wizard);

@@ -28,7 +28,7 @@ const DASHBOARD: Section = { label: 'Dashboard', path: '/' };
 const SECTIONS: Section[] = [
   DASHBOARD,
   { label: 'VMs', path: '/vms', phase: 5 },
-  { label: 'Zones', path: '/zones', phase: 4 },
+  { label: 'Zones', path: '/zones' },
   { label: 'Images', path: '/images' },
   { label: 'Network', path: '/network' },
   { label: 'Storage', path: '/storage' },

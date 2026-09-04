@@ -5,10 +5,12 @@ Upstream kayak commits that the pinned release branch lacks, exported with
 fork's `mandrake/r151054` branch, which is what the `build/kayak` submodule
 points at (ADR-0004).
 
-All of them add the overlay mechanism (`ZFS_CUSTOM_OVERLAY`,
+0001 to 0005 add the overlay mechanism (`ZFS_CUSTOM_OVERLAY`,
 `MINIROOT_CUSTOM_OVERLAY`, `.overlay-hooks/`) that Mandrake's media build
-relies on (ADR-0005). Nothing here is Mandrake-specific; the fork stays
-upstream code.
+relies on (ADR-0005); they are upstream code. 0006 is Mandrake's own
+(ADR-0014): it hooks `/kayak/lib/mandrake.sh` into the installer, names
+the boot environment from `$BENAME`, runs `mandrake-config` from the
+post-install menu, and brands the menu titles.
 
 To (re)create the branch in the fork:
 

@@ -1,0 +1,162 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Nightshade Systems <mandrake@nightshade.systems>
+Date: Thu, 3 Sep 2026 00:00:00 +0000
+Subject: [PATCH] Mandrake installer configuration and branding
+
+Mandrake-specific (ADR-0014), unlike the overlay backports before it:
+
+- install_help.sh sources /kayak/lib/mandrake.sh when the media carries
+  it, so answer files get the Mandrake verbs; BuildBE and MakeBootable
+  default the BE name to $BENAME; RunInstall refuses an answer file
+  without MandrakeAdmin and MandrakeMgmt before touching a disk and runs
+  MandrakeApply after sourcing it.
+- rpool-install names the BE from $BENAME and defaults the hostname to
+  "mandrake" when the verbs are present.
+- kayak-menu runs /kayak/installer/mandrake-config as the default
+  post-install item, keeps the OmniOS configuration menu as an advanced
+  item, and says Mandrake in its titles.
+---
+  installer/kayak-menu    | 18 +++++++++++-------
+  installer/rpool-install |  4 +++-
+  lib/install_help.sh     | 17 +++++++++++++++--
+  3 files changed, 29 insertions(+), 10 deletions(-)
+
+diff --git a/installer/kayak-menu b/installer/kayak-menu
+index 6b8d8a5..2af68c1 100755
+--- a/installer/kayak-menu
++++ b/installer/kayak-menu
+@@ -62,7 +62,7 @@ fi
+ if [ -n "$USE_DIALOG" ]; then
+ 	i=10
+ 	echo; echo
+-	echo "Press return to start the OmniOS installer."
++	echo "Press return to start the Mandrake installer."
+ 	while [ $i -gt 0 ]; do
+ 		unit=second
+ 		[ $i -gt 1 ] && unit=seconds
+@@ -134,12 +134,12 @@ function d_detecting {
+ 
+ # Preinstall menu
+ menu_items=( \
+-    (menu_str="Find disks, create rpool, and install OmniOS"		\
++    (menu_str="Find disks, create rpool, and install Mandrake"		\
+ 	cmds=("/kayak/installer/find-and-install $klang")		\
+ 	dcmds=("d_detecting x", "/kayak/installer/dialog-install $klang")\
+ 	default="true"							\
+ 	do_subprocess="true")						\
+-    (menu_str="Install OmniOS straight on to a preconfigured rpool"	\
++    (menu_str="Install Mandrake straight on to a preconfigured rpool"	\
+ 	cmds=("/kayak/installer/rpool-install rpool $klang")		\
+ 	do_subprocess="true")						\
+     (menu_str="Shell (for manual rpool creation)"			\
+@@ -160,10 +160,14 @@ menu_items=( \
+ 
+ # Postinstall menu
+ pi_menu_items=( \
+-    (menu_str="Configure the installed OmniOS system"			\
++    (menu_str="Configure Mandrake (admin, management network)"		\
++	cmds=("/kayak/installer/mandrake-config")			\
++	dcmds=("/kayak/installer/mandrake-config -dialog")		\
++	default="true"							\
++	do_subprocess="true")						\
++    (menu_str="Configure the installed OmniOS system (advanced)"	\
+ 	cmds=("/kayak/installer/config-menu")				\
+ 	dcmds=("/kayak/installer/config-menu -dialog")			\
+-	default="true"							\
+ 	do_subprocess="true")						\
+     (menu_str="Shell (for post-install ops on /mnt)"			\
+ 	cmds=("/usr/bin/bash")						\
+@@ -186,7 +190,7 @@ function display_text_menu {
+ 	stty sane
+ 
+ 	clear
+-	printf "Welcome to the OmniOS installation menu\n\n"
++	printf "Welcome to the Mandrake installation menu\n\n"
+ 	for i in "${!menu[@]}"; do
+ 		nameref item=menu[$i]
+ 		print "\t$((i + 1))  ${item.menu_str}"
+@@ -211,7 +215,7 @@ function display_dialog_menu {
+ 
+ 	tmpf=`mktemp`
+ 	dialog \
+-		--title "Welcome to the OmniOS installer" \
++		--title "Welcome to the Mandrake installer" \
+ 		--hline "Use arrow or hot keys to select one of the options above" \
+ 		--no-ok \
+ 		--no-tags \
+diff --git a/installer/rpool-install b/installer/rpool-install
+index 656b82a..26fc12f 100644
+--- a/installer/rpool-install
++++ b/installer/rpool-install
+@@ -41,7 +41,7 @@ echo "Installing from ZFS image $ZFS_IMAGE"
+ 
+ SetupLog /tmp/kayak.log
+ 
+-prompt_hostname omnios
++prompt_hostname ${MANDRAKE_LIB_LOADED:+mandrake}${MANDRAKE_LIB_LOADED:-omnios}
+ prompt_timezone
+ 
+ # Because of kayak's small miniroot, just use C as the language for now.
+@@ -50,6 +50,8 @@ LANG=C
+ bename=omnios
+ ver=`head -1 /etc/release | awk '{print $3}'`
+ [ -n "$ver" ] && bename+="-$ver"
++# Mandrake (ADR-0014): the initial BE is mandrake-<version>.
++[ -n "$BENAME" ] && bename=$BENAME
+ 
+ BuildBE $RPOOL $ZFS_IMAGE $bename
+ ApplyChanges $HOSTNAME $TZ $LANG $keyboard_layout
+diff --git a/lib/install_help.sh b/lib/install_help.sh
+index 1401dce..576e2d2 100644
+--- a/lib/install_help.sh
++++ b/lib/install_help.sh
+@@ -238,7 +238,7 @@ function BE_LinkMsglog {
+ function BuildBE {
+     RPOOL=${1:-rpool}
+     typeset MEDIA="$2"
+-    typeset _bename=${3:-omnios}
++    typeset _bename=${3:-${BENAME:-omnios}}
+ 
+     if [ -z "$MEDIA" ]; then
+         BOOTSRVA=`/sbin/dhcpinfo BootSrvA`
+@@ -294,7 +294,7 @@ function FetchConfig {
+ 
+ function MakeBootable {
+     typeset _rpool=${1:-rpool}
+-    typeset _bename=${2:-omnios}
++    typeset _bename=${2:-${BENAME:-omnios}}
+     slog "Making boot environment bootable"
+     logcmd zpool set bootfs=$_rpool/ROOT/$_bename $_rpool
+     # Must do beadm activate first on the off chance we're bootstrapping from
+@@ -400,9 +400,19 @@ function Reboot {
+ 
+ function RunInstall {
+     FetchConfig || bomb "Could not fetch kayak config for target"
++    # Mandrake (ADR-0014): refuse an answer file without the required
++    # verbs before any disk is touched.
++    if [ -n "$MANDRAKE_LIB_LOADED" ]; then
++        egrep -s MandrakeAdmin $ICFILE \
++            || bomb "Answer file has no MandrakeAdmin <user> <password>"
++        egrep -s MandrakeMgmt $ICFILE \
++            || bomb "Answer file has no MandrakeMgmt <link> dhcp|<addr/prefix> [gw]"
++    fi
+     # Set RPOOL if it wasn't done so already. We need it set.
+     RPOOL=${RPOOL:-rpool}
+     . $ICFILE
++    # Mandrake (ADR-0014): write the recorded answers into the BE.
++    [ -n "$MANDRAKE_LIB_LOADED" ] && MandrakeApply
+     Postboot 'exit $SMF_EXIT_OK'
+     ApplyChanges || bomb "Could not apply all configuration changes"
+     MakeBootable $RPOOL || bomb "Could not make new BE bootable"
+@@ -410,5 +420,8 @@ function RunInstall {
+     return 0
+ }
+ 
++# Mandrake (ADR-0014): answer-file verbs, when the media carries them.
++[ -f /kayak/lib/mandrake.sh ] && . /kayak/lib/mandrake.sh
++
+ # Vim hints
+ # vim:ts=4:sw=4:et:fdm=marker
+-- 
+2.43.0
+

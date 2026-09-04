@@ -8,6 +8,7 @@ or replaced.
 | File | In the ramdisk | Purpose |
 |---|---|---|
 | `lib/mandrake.sh` | `/kayak/lib/mandrake.sh` | Answer-file verbs and `MandrakeApply`; sets the BE name |
+| `mandrake-config` | `/kayak/installer/mandrake-config` | Interactive screens: admin, SSH key, management NIC, DNS |
 | `answer.sample` | PXE tarball `http/kayak/000000000000.sample` | Unattended install template |
 
 The fork patch in `build/patches/kayak/` sources `mandrake.sh` from

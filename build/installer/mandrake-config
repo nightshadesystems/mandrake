@@ -1,0 +1,253 @@
+#!/bin/bash
+#
+# Mandrake configuration for an interactive install (ADR-0014). Runs from
+# the kayak menu after the image is installed and mounted on /mnt: admin
+# user, SSH key, management NIC and address, DNS. Hostname and timezone
+# were asked by rpool-install already. Asks the same questions the answer
+# file answers and calls the same verbs, so the two paths cannot drift.
+#
+#   mandrake-config [-dialog]
+#
+# shellcheck disable=SC2154 # USE_DIALOG, HOSTNAME come from kayak
+
+[ "$1" = -dialog ] && export USE_DIALOG=1
+
+. /kayak/lib/install_help.sh
+. /kayak/lib/utils.sh
+[ -n "$USE_DIALOG" ] && . /kayak/lib/dialog.sh
+# The verbs, when install_help.sh does not source them yet.
+[ -f /kayak/lib/mandrake.sh ] && . /kayak/lib/mandrake.sh
+
+SetupLog /tmp/kayak.log
+: "${ALTROOT:=/mnt}"
+export ALTROOT
+
+tmpf=$(mktemp)
+trap 'rm -f "$tmpf"' EXIT
+
+if [ ! -d "$ALTROOT/etc/mandrake" ]; then
+    if [ -n "$USE_DIALOG" ]; then
+        d_msg "No installed Mandrake system is mounted on $ALTROOT."
+    else
+        echo "No installed Mandrake system is mounted on $ALTROOT."
+        echo "Install first, then configure."
+        read -r
+    fi
+    exit 1
+fi
+
+# ------------------------------------------------------------ prompts
+
+# ask_input <title> <default> -> REPLY; returns 1 on cancel.
+ask_input() {
+    if [ -n "$USE_DIALOG" ]; then
+        dialog --title "$1" --inputbox '' 7 60 "$2" 2> "$tmpf" || return 1
+        REPLY=$(cat "$tmpf")
+    else
+        printf '%s [%s]: ' "$1" "$2"
+        read -r REPLY
+        [ -z "$REPLY" ] && REPLY=$2
+    fi
+    return 0
+}
+
+# ask_password <title> -> REPLY; returns 1 on cancel.
+ask_password() {
+    if [ -n "$USE_DIALOG" ]; then
+        dialog --title "$1" --insecure --passwordbox '' 7 60 2> "$tmpf" || return 1
+        REPLY=$(cat "$tmpf")
+    else
+        printf '%s: ' "$1"
+        stty -echo
+        read -r REPLY
+        stty echo
+        echo
+    fi
+    return 0
+}
+
+# ask_menu <title> <default> <tag> <description>... -> REPLY; 1 on cancel.
+ask_menu() {
+    typeset title=$1 def=$2 i n
+    shift 2
+    if [ -n "$USE_DIALOG" ]; then
+        dialog --title "$title" --no-tags --default-item "$def" \
+            --menu '' 0 0 0 "$@" 2> "$tmpf" || return 1
+        REPLY=$(cat "$tmpf")
+        return 0
+    fi
+    echo
+    echo "$title"
+    n=$(($# / 2))
+    for ((i = 1; i <= n; i++)); do
+        printf '  %d  %s\n' "$i" "${*:$((2 * i)):1}"
+    done
+    while :; do
+        printf 'Choice [1]: '
+        read -r i
+        [ -z "$i" ] && i=1
+        if [[ $i =~ ^[0-9]+$ ]] && [ "$i" -ge 1 ] && [ "$i" -le "$n" ]; then
+            REPLY=${*:$((2 * i - 1)):1}
+            return 0
+        fi
+    done
+}
+
+say() {
+    if [ -n "$USE_DIALOG" ]; then
+        d_msg "$*"
+    else
+        echo
+        echo "$*"
+    fi
+}
+
+# ------------------------------------------------------------ questions
+
+ask_admin() {
+    typeset user pw pw2
+    while :; do
+        ask_input "Console admin username" "${user:-admin}" || return 1
+        user=$REPLY
+        if ! mandrake_valid_user "$user"; then
+            say "Use lower-case letters, digits, _ and -; not root."
+            continue
+        fi
+        ask_password "Password for $user (at least 8 characters)" || return 1
+        pw=$REPLY
+        if [ ${#pw} -lt 8 ]; then
+            say "The password must be at least 8 characters."
+            continue
+        fi
+        ask_password "Re-type the password" || return 1
+        pw2=$REPLY
+        if [ "$pw" != "$pw2" ]; then
+            say "The passwords do not match."
+            continue
+        fi
+        break
+    done
+    ADMIN_USER=$user
+    ADMIN_PW=$pw
+}
+
+ask_sshkey() {
+    while :; do
+        ask_input "SSH public key for $ADMIN_USER (optional; SSH is keys only)" "" || return 1
+        [ -z "$REPLY" ] && { SSH_KEY=; return 0; }
+        if [[ $REPLY =~ ^(ssh-(rsa|ed25519|dss)|ecdsa-sha2-nistp[0-9]+|sk-[a-z0-9-]+@openssh\.com)\ [A-Za-z0-9+/=]+ ]] \
+            && [[ $REPLY != *\'* ]]; then
+            SSH_KEY=$REPLY
+            return 0
+        fi
+        say "That is not an OpenSSH public key (ssh-ed25519 AAAA... comment)."
+    done
+}
+
+ask_link() {
+    typeset -a items=()
+    typeset link media state speed duplex rest first=
+    while read -r link media state speed duplex rest; do
+        [ "$media" = Infiniband ] && continue
+        [ -z "$first" ] && first=$link
+        items+=("$link" "$(printf '%-10s %-10s %-6s %s' "$link" "$media" "$state" "$speed")")
+    done < <(/sbin/dladm show-phys | sed 1d)
+    if [ ${#items[@]} -eq 0 ]; then
+        say "No network links found; configure the management network after the first boot."
+        return 1
+    fi
+    ask_menu "Management NIC (mgmt0 is created over it)" "$first" "${items[@]}" || return 1
+    MGMT_LINK=$REPLY
+}
+
+ask_address() {
+    ask_menu "Management address" dhcp dhcp "DHCP" static "Static address" || return 1
+    if [ "$REPLY" = dhcp ]; then
+        MGMT_ADDR=dhcp
+        MGMT_GW=
+        return 0
+    fi
+    while :; do
+        ask_input "Address with prefix length (192.0.2.10/24)" "${MGMT_ADDR:-}" || return 1
+        mandrake_valid_cidr "$REPLY" && { MGMT_ADDR=$REPLY; break; }
+        say "Enter an address with a prefix length, such as 192.0.2.10/24."
+    done
+    while :; do
+        ask_input "Default gateway (empty for none)" "${MGMT_GW:-}" || return 1
+        [ -z "$REPLY" ] || mandrake_valid_addr "$REPLY" && { MGMT_GW=$REPLY; break; }
+        say "Enter an IP address, or nothing."
+    done
+}
+
+ask_dns() {
+    typeset s
+    while :; do
+        ask_input "DNS servers, space separated (empty: from DHCP)" "${DNS_SERVERS:-}" || return 1
+        DNS_SERVERS=$REPLY
+        for s in $DNS_SERVERS; do
+            if ! mandrake_valid_addr "$s"; then
+                say "'$s' is not an IP address."
+                continue 2
+            fi
+        done
+        break
+    done
+    ask_input "DNS search domain (optional)" "${DNS_DOMAIN:-}" || return 1
+    DNS_DOMAIN=$REPLY
+}
+
+summary() {
+    cat <<EOF
+Hostname:        $(cat "$ALTROOT/etc/nodename" 2>/dev/null || echo "$HOSTNAME")
+Console admin:   $ADMIN_USER
+SSH key:         ${SSH_KEY:+${SSH_KEY:0:32}...}${SSH_KEY:-none (console only)}
+Management NIC:  mgmt0 over $MGMT_LINK
+Address:         $MGMT_ADDR${MGMT_GW:+ via $MGMT_GW}
+DNS:             ${DNS_SERVERS:-from DHCP}${DNS_DOMAIN:+ (search $DNS_DOMAIN)}
+Boot environment: $BENAME
+EOF
+}
+
+confirm() {
+    if [ -n "$USE_DIALOG" ]; then
+        dialog --title "Apply this configuration?" --yesno "$(summary)" 14 70
+    else
+        echo
+        summary
+        echo
+        printf 'Apply this configuration? (y/n) '
+        read -r a
+        [[ $a == [yY] ]]
+    fi
+}
+
+# ------------------------------------------------------------ flow
+
+ADMIN_USER= ADMIN_PW= SSH_KEY= MGMT_LINK= MGMT_ADDR= MGMT_GW= DNS_SERVERS= DNS_DOMAIN=
+
+while :; do
+    ask_admin || exit 0
+    ask_sshkey || exit 0
+    ask_link || exit 0
+    ask_address || exit 0
+    ask_dns || exit 0
+    confirm && break
+done
+
+log "mandrake-config: applying"
+MandrakeAdmin "$ADMIN_USER" "$ADMIN_PW"
+ADMIN_PW=
+[ -n "$SSH_KEY" ] && MandrakeSshKey "$SSH_KEY"
+# shellcheck disable=SC2086 # the gateway is one word or absent
+MandrakeMgmt "$MGMT_LINK" "$MGMT_ADDR" $MGMT_GW
+if [ -n "$DNS_SERVERS" ]; then
+    # shellcheck disable=SC2086 # servers are a word list
+    UseDNS $DNS_SERVERS $DNS_DOMAIN
+elif [ -n "$DNS_DOMAIN" ]; then
+    EnableDNS "$DNS_DOMAIN"
+fi
+MandrakeApply || exit 1
+touch "$ALTROOT/.mandrake-configured"
+
+say "Mandrake is configured. Reboot from the menu; the console URL and certificate fingerprint appear on the console after the first boot."
+exit 0

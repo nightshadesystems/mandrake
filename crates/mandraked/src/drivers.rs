@@ -7,7 +7,7 @@ use axum::http::StatusCode;
 use mandrake_core::shell::{FailureKind, SystemRunner};
 use mandrake_images::{FakeStore, FakeTransport, HttpTransport, ImageError, Importer, ZfsStore};
 use mandrake_net::{FakeNet, Net, NetCli, NetError};
-use mandrake_zfs::{FakeZfs, Zfs, ZfsCli, ZfsError};
+use mandrake_zfs::{BeadmCli, BootEnvs, FakeBeadm, FakeZfs, Zfs, ZfsCli, ZfsError};
 use mandrake_zones::{FakeZones, ZoneError, Zones, ZonesCli};
 
 use crate::{auth::ratelimit::LoginLimiter, error::ApiError};
@@ -25,6 +25,10 @@ pub struct Options {
     pub net: Arc<dyn Net>,
     /// Zone driver.
     pub zones: Arc<dyn Zones>,
+    /// Boot environments.
+    pub beadm: Arc<dyn BootEnvs>,
+    /// Package updates.
+    pub pkg: Arc<dyn crate::pkg::Pkg>,
     /// Image transport and store.
     pub importer: Importer,
     /// How often a scan job polls the pool.
@@ -44,6 +48,8 @@ impl Options {
             zfs: Arc::new(ZfsCli::new(runner.clone())),
             net: Arc::new(NetCli::new(runner.clone())),
             zones: Arc::new(ZonesCli::new(runner.clone())),
+            beadm: Arc::new(BeadmCli::new(runner.clone())),
+            pkg: Arc::new(crate::pkg::PkgCli::new(runner.clone())),
             importer: Importer::new(
                 Arc::new(transport),
                 Arc::new(ZfsStore::new(runner, crate::images::STORE_OWNER)),
@@ -61,6 +67,8 @@ impl Options {
             zfs: Arc::new(FakeZfs::typical()),
             net: Arc::new(FakeNet::typical()),
             zones: Arc::new(FakeZones::typical()),
+            beadm: Arc::new(FakeBeadm::typical()),
+            pkg: Arc::new(crate::pkg::FakePkg::new()),
             importer: Importer::new(Arc::new(FakeTransport::new()), Arc::new(FakeStore::new())),
             scan_poll: Duration::from_millis(20),
             listen: None,
@@ -92,6 +100,20 @@ impl Options {
     #[must_use]
     pub fn with_zones(mut self, zones: Arc<dyn Zones>) -> Self {
         self.zones = zones;
+        self
+    }
+
+    /// Replace the boot-environment driver.
+    #[must_use]
+    pub fn with_beadm(mut self, beadm: Arc<dyn BootEnvs>) -> Self {
+        self.beadm = beadm;
+        self
+    }
+
+    /// Replace the package driver.
+    #[must_use]
+    pub fn with_pkg(mut self, pkg: Arc<dyn crate::pkg::Pkg>) -> Self {
+        self.pkg = pkg;
         self
     }
 

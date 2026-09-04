@@ -13,11 +13,13 @@
 
 #![allow(clippy::must_use_candidate, clippy::missing_errors_doc)]
 
+pub mod beadm;
 pub mod cli;
 pub mod fake;
 pub mod parse;
 pub mod types;
 
+pub use beadm::{BeadmCli, BootEnvs, FakeBeadm};
 pub use cli::ZfsCli;
 pub use fake::FakeZfs;
 pub use mandrake_core::shell::BoxFuture;

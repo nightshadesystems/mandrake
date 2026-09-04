@@ -1,0 +1,26 @@
+            Packages to remove:   1
+           Packages to install:   1
+            Packages to update:   3
+     Estimated space available: 102.34 GB
+Estimated space to be consumed: 215.67 MB
+       Create boot environment:  Yes
+Create backup boot environment:   No
+          Rebuild boot archive:  Yes
+
+Changed packages:
+nightshade.systems
+  incorporation/mandrake/mandrake-incorporation
+    0.1.0-151054.0:20260901T120000Z -> 0.2.0-151054.0:20260930T090000Z
+  system/mandrake/daemon
+    0.1.0-151054.0:20260901T120000Z -> 0.2.0-151054.0:20260930T090000Z
+  system/mandrake/cli
+    0.1.0-151054.0:20260901T120000Z -> 0.2.0-151054.0:20260930T090000Z
+omnios
+  library/security/openssl-3
+    None -> 3.0.15-151054.0:20260915T000000Z
+  library/legacy/thing
+    1.0-151054.0:20250101T000000Z -> None
+
+Services:
+  restart_fmri:
+    svc:/system/manifest-import:default

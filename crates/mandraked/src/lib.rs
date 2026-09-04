@@ -28,11 +28,13 @@ pub mod idempotency;
 pub mod images;
 pub mod jobs;
 pub mod metadata;
+pub mod pkg;
 pub mod routes;
 pub mod serve;
 #[cfg(unix)]
 pub mod socket;
 pub mod tls;
+pub mod updates;
 pub mod vms;
 pub mod vnc;
 pub mod zone_console;

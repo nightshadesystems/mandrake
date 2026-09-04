@@ -34,7 +34,7 @@ pub struct FakeZfs {
     state: Arc<Mutex<State>>,
 }
 
-fn tool_error(message: &str) -> ZfsError {
+pub(crate) fn tool_error(message: &str) -> ZfsError {
     ZfsError::Command(ShellError::Failed {
         command: "fake".to_owned(),
         status: 1,

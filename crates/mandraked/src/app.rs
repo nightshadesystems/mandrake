@@ -82,6 +82,10 @@ pub struct Inner {
     pub importer: Importer,
     /// Zone driver.
     pub zones: Arc<dyn Zones>,
+    /// Boot environments.
+    pub beadm: Arc<dyn mandrake_zfs::BootEnvs>,
+    /// Package updates.
+    pub pkg: Arc<dyn crate::pkg::Pkg>,
     /// Cached zone listing with configurations.
     pub zones_cache: TtlCache<Vec<crate::zones::ZoneInfo>>,
     /// Which zones have a console attached.
@@ -116,6 +120,8 @@ impl AppState {
             zfs,
             net,
             zones,
+            beadm,
+            pkg,
             importer,
             scan_poll,
             listen,
@@ -154,6 +160,8 @@ impl AppState {
             routes_cache: TtlCache::new(LIST_TTL),
             importer,
             zones,
+            beadm,
+            pkg,
             zones_cache: TtlCache::new(LIST_TTL),
             console_sessions: crate::zone_console::ConsoleSessions::default(),
             vnc_sessions: crate::zone_console::ConsoleSessions::default(),

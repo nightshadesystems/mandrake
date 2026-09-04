@@ -50,4 +50,13 @@ pub struct Config {
     /// Log filter, for example `info` or `mandraked=debug,tower_http=info`.
     #[arg(long, env = "MANDRAKED_LOG", default_value = "info")]
     pub log: String,
+
+    /// First-boot file from the installer: the admin to create when no
+    /// user exists yet; consumed and destroyed (ADR-0014).
+    #[arg(
+        long,
+        env = "MANDRAKED_FIRSTBOOT",
+        default_value = "/etc/mandrake/firstboot.json"
+    )]
+    pub firstboot: PathBuf,
 }

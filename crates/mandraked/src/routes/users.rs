@@ -67,7 +67,7 @@ pub fn summary(u: &User) -> Value {
     })
 }
 
-fn validate_username(name: &str) -> Result<(), ApiError> {
+pub(crate) fn validate_username(name: &str) -> Result<(), ApiError> {
     let mut chars = name.chars();
     let first_ok = chars
         .next()

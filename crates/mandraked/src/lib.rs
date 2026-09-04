@@ -22,6 +22,7 @@ pub mod db;
 pub mod drivers;
 pub mod error;
 pub mod events;
+pub mod firstboot;
 pub mod host;
 pub mod idempotency;
 pub mod images;

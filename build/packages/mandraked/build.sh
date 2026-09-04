@@ -31,6 +31,7 @@ BUILD_DEPENDS_IPS="
 "
 RUN_DEPENDS_IPS="
     database/sqlite-3
+    library/security/openssl-3
 "
 
 BUILDDIR=mandrake-$VER

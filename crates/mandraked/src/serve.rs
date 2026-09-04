@@ -59,6 +59,14 @@ pub async fn run(cfg: Config) -> Result<(), RunError> {
         Err(e) => tracing::warn!(error = %e, "job recovery failed"),
     }
 
+    match crate::firstboot::apply(&state, &cfg.firstboot).await {
+        Ok(crate::firstboot::Outcome::Created(name)) => {
+            tracing::info!(username = %name, "first-boot admin created from the installer file");
+        }
+        Ok(_) => {}
+        Err(e) => tracing::error!(error = %e, "first-boot file could not be applied"),
+    }
+
     let hostname = match cfg.hostname.clone() {
         Some(h) => h,
         None => host::facts().await.hostname,

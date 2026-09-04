@@ -1,19 +1,67 @@
 #!/bin/sh
 #
-# SMF method for svc:/system/mandrake/{setup,mandraked} (ADR-0010).
+# SMF method for svc:/system/mandrake/{setup,mandraked,banner} (ADR-0010,
+# ADR-0014).
 #
 #   setup   as root: create the runtime directory for the socket
 #   start   as the mandrake user: read config properties, exec the daemon
+#   banner  as root, after the daemon: print the console URL and the
+#           certificate fingerprint on the console and keep them in motd
 
 # shellcheck disable=SC1091
 . /lib/svc/share/smf_include.sh
 
 DAEMON=/usr/lib/mandrake/mandraked
+DAEMON_FMRI=svc:/system/mandrake/mandraked:default
 RUNDIR=/var/run/mandrake
 USER=mandrake
+MOTD=/etc/motd
+MOTD_BEGIN='# --- Mandrake console ---'
+MOTD_END='# --- end Mandrake console ---'
 
 prop() {
-    svcprop -p "config/$1" "$SMF_FMRI"
+    svcprop -p "config/$1" "$2"
+}
+
+# The SHA-256 fingerprint of the daemon's certificate, AA:BB:... as the
+# daemon prints it.
+fingerprint() {
+    openssl x509 -in "$1" -noout -fingerprint -sha256 2>/dev/null \
+        | sed -e 's/^.*=//' | tr '[:lower:]' '[:upper:]'
+}
+
+banner() {
+    tls_dir=$(prop tls_dir "$DAEMON_FMRI")
+    listen=$(prop listen "$DAEMON_FMRI")
+    [ -n "$tls_dir" ] || tls_dir=/etc/mandrake/tls
+    port=${listen##*:}
+    [ -n "$port" ] || port=443
+    host=$(hostname)
+    fp=$(fingerprint "$tls_dir/cert.pem")
+    [ -n "$fp" ] || fp="(no certificate at $tls_dir/cert.pem)"
+    url="https://$host/"
+    [ "$port" = 443 ] || url="https://$host:$port/"
+
+    text="Mandrake console: $url
+TLS certificate SHA-256 fingerprint: $fp"
+
+    for dev in /dev/msglog /dev/console; do
+        [ -w "$dev" ] && printf '\n%s\n\n' "$text" > "$dev"
+    done
+
+    # Replace the block between the markers, or append one.
+    tmp=$(mktemp) || exit "$SMF_EXIT_ERR_FATAL"
+    if [ -f "$MOTD" ]; then
+        awk -v b="$MOTD_BEGIN" -v e="$MOTD_END" \
+            '$0 == b { skip = 1 } !skip { print } $0 == e { skip = 0 }' "$MOTD" > "$tmp"
+    fi
+    {
+        printf '%s\n' "$MOTD_BEGIN"
+        printf '%s\n' "$text"
+        printf '%s\n' "$MOTD_END"
+    } >> "$tmp"
+    cp "$tmp" "$MOTD" && chmod 0644 "$MOTD"
+    rm -f "$tmp"
 }
 
 case "$1" in
@@ -24,25 +72,32 @@ setup)
     exit "$SMF_EXIT_OK"
     ;;
 start)
-    listen=$(prop listen)
-    socket=$(prop socket)
-    db=$(prop db)
-    tls_dir=$(prop tls_dir)
-    log=$(prop log)
+    listen=$(prop listen "$SMF_FMRI")
+    socket=$(prop socket "$SMF_FMRI")
+    db=$(prop db "$SMF_FMRI")
+    tls_dir=$(prop tls_dir "$SMF_FMRI")
+    log=$(prop log "$SMF_FMRI")
+    firstboot=$(prop firstboot "$SMF_FMRI")
     [ -n "$listen" ] || listen=0.0.0.0:443
     [ -n "$socket" ] || socket=$RUNDIR/mandraked.sock
     [ -n "$db" ] || db=/var/mandrake/mandrake.db
     [ -n "$tls_dir" ] || tls_dir=/etc/mandrake/tls
     [ -n "$log" ] || log=info
+    [ -n "$firstboot" ] || firstboot=/etc/mandrake/firstboot.json
     exec "$DAEMON" \
         --listen "$listen" \
         --socket "$socket" \
         --db "$db" \
         --tls-dir "$tls_dir" \
-        --log "$log"
+        --log "$log" \
+        --firstboot "$firstboot"
+    ;;
+banner)
+    banner
+    exit "$SMF_EXIT_OK"
     ;;
 *)
-    echo "usage: $0 setup|start" >&2
+    echo "usage: $0 setup|start|banner" >&2
     exit "$SMF_EXIT_ERR_CONFIG"
     ;;
 esac

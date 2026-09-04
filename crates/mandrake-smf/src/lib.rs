@@ -1,7 +1,7 @@
 //! SMF manifests and service control.
 //!
 //! Holds the manifest bundle for `svc:/system/mandrake/mandraked:default`
-//! and its `setup` companion, plus the method script, embedded so the
+//! and its `setup` and `banner` companions, plus the method script, embedded so the
 //! packaging step and tests read one copy. Service control helpers
 //! (`svcs`, `svcadm`) arrive with the first phase that needs them.
 
@@ -20,8 +20,11 @@ pub const DAEMON_FMRI: &str = "svc:/system/mandrake/mandraked:default";
 /// FMRI of the one-shot setup service.
 pub const SETUP_FMRI: &str = "svc:/system/mandrake/setup:default";
 
+/// FMRI of the banner service that runs after the daemon (ADR-0014).
+pub const BANNER_FMRI: &str = "svc:/system/mandrake/banner:default";
+
 /// The `config/*` property names the method script reads.
-pub const CONFIG_PROPERTIES: [&str; 5] = ["listen", "socket", "db", "tls_dir", "log"];
+pub const CONFIG_PROPERTIES: [&str; 6] = ["listen", "socket", "db", "tls_dir", "log", "firstboot"];
 
 #[cfg(test)]
 mod tests {
@@ -31,6 +34,8 @@ mod tests {
     fn manifest_declares_both_services_and_every_config_property() {
         assert!(MANIFEST.contains("name=\"system/mandrake/setup\""));
         assert!(MANIFEST.contains("name=\"system/mandrake/mandraked\""));
+        assert!(MANIFEST.contains("name=\"system/mandrake/banner\""));
+        assert!(MANIFEST.contains("svc-mandraked banner"));
         assert!(MANIFEST.contains("privileges=\"basic,net_privaddr\""));
         for prop in CONFIG_PROPERTIES {
             assert!(
@@ -48,6 +53,8 @@ mod tests {
     fn method_handles_both_verbs() {
         assert!(METHOD.contains("setup)"));
         assert!(METHOD.contains("start)"));
+        assert!(METHOD.contains("banner)"));
+        assert!(METHOD.contains("openssl x509"));
         assert!(METHOD.contains("exec \"$DAEMON\""));
     }
 }

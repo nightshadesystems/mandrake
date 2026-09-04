@@ -4,7 +4,7 @@
 use std::{net::IpAddr, sync::Arc, time::Duration};
 
 use axum::http::StatusCode;
-use mandrake_core::shell::{FailureKind, SystemRunner};
+use mandrake_core::shell::{FailureKind, Runner, ScriptedRunner, SystemRunner};
 use mandrake_images::{FakeStore, FakeTransport, HttpTransport, ImageError, Importer, ZfsStore};
 use mandrake_net::{FakeNet, Net, NetCli, NetError};
 use mandrake_zfs::{BeadmCli, BootEnvs, FakeBeadm, FakeZfs, Zfs, ZfsCli, ZfsError};
@@ -36,6 +36,10 @@ pub struct Options {
     /// The address the HTTPS listener is bound to, when it is a specific
     /// one; part of what makes the management path protected.
     pub listen: Option<IpAddr>,
+    /// Runs host commands the daemon issues itself (reboot).
+    pub runner: Arc<dyn Runner>,
+    /// How long a reboot job waits before `shutdown` (ADR-0015).
+    pub reboot_grace: Duration,
 }
 
 impl Options {
@@ -52,10 +56,12 @@ impl Options {
             pkg: Arc::new(crate::pkg::PkgCli::new(runner.clone())),
             importer: Importer::new(
                 Arc::new(transport),
-                Arc::new(ZfsStore::new(runner, crate::images::STORE_OWNER)),
+                Arc::new(ZfsStore::new(runner.clone(), crate::images::STORE_OWNER)),
             ),
             scan_poll: Duration::from_secs(2),
             listen: None,
+            runner,
+            reboot_grace: crate::routes::updates::REBOOT_GRACE,
         })
     }
 
@@ -72,6 +78,12 @@ impl Options {
             importer: Importer::new(Arc::new(FakeTransport::new()), Arc::new(FakeStore::new())),
             scan_poll: Duration::from_millis(20),
             listen: None,
+            runner: {
+                let r = ScriptedRunner::new();
+                r.ok("shutdown", "");
+                Arc::new(r)
+            },
+            reboot_grace: Duration::from_millis(20),
         }
     }
 
@@ -114,6 +126,13 @@ impl Options {
     #[must_use]
     pub fn with_pkg(mut self, pkg: Arc<dyn crate::pkg::Pkg>) -> Self {
         self.pkg = pkg;
+        self
+    }
+
+    /// Replace the host command runner.
+    #[must_use]
+    pub fn with_runner(mut self, runner: Arc<dyn Runner>) -> Self {
+        self.runner = runner;
         self
     }
 
@@ -186,6 +205,16 @@ impl From<ImageError> for ApiError {
             other => other.to_string(),
         };
         driver_error(e.kind(), detail, "image", &e)
+    }
+}
+
+impl From<crate::pkg::PkgError> for ApiError {
+    fn from(e: crate::pkg::PkgError) -> Self {
+        let detail = match &e {
+            crate::pkg::PkgError::Command(c) => c.stderr().to_owned(),
+            crate::pkg::PkgError::Parse(_) => e.to_string(),
+        };
+        driver_error(FailureKind::Other, detail, "pkg", &e)
     }
 }
 

@@ -17,6 +17,7 @@ use crate::error::ApiError;
 const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/0001_init.sql"),
     include_str!("../migrations/0002_images.sql"),
+    include_str!("../migrations/0003_updates.sql"),
 ];
 
 /// Errors opening or migrating the database.

@@ -2,6 +2,7 @@
 
 pub mod audit;
 pub mod auth;
+pub mod boot_environments;
 pub mod events;
 pub mod health;
 pub mod images;
@@ -10,6 +11,7 @@ pub mod network;
 pub mod storage;
 pub mod system;
 pub mod tokens;
+pub mod updates;
 pub mod users;
 pub mod vms;
 pub mod zones;

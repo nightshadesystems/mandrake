@@ -86,6 +86,10 @@ pub struct Inner {
     pub beadm: Arc<dyn mandrake_zfs::BootEnvs>,
     /// Package updates.
     pub pkg: Arc<dyn crate::pkg::Pkg>,
+    /// Host command runner (reboot).
+    pub runner: Arc<dyn mandrake_core::shell::Runner>,
+    /// Grace before a reboot job runs `shutdown`.
+    pub reboot_grace: std::time::Duration,
     /// Cached zone listing with configurations.
     pub zones_cache: TtlCache<Vec<crate::zones::ZoneInfo>>,
     /// Which zones have a console attached.
@@ -122,6 +126,8 @@ impl AppState {
             zones,
             beadm,
             pkg,
+            runner,
+            reboot_grace,
             importer,
             scan_poll,
             listen,
@@ -162,6 +168,8 @@ impl AppState {
             zones,
             beadm,
             pkg,
+            runner,
+            reboot_grace,
             zones_cache: TtlCache::new(LIST_TTL),
             console_sessions: crate::zone_console::ConsoleSessions::default(),
             vnc_sessions: crate::zone_console::ConsoleSessions::default(),
@@ -200,6 +208,22 @@ pub fn api_router(state: AppState) -> Router {
         .route("/auth/session", get(routes::auth::session))
         .route("/system", get(routes::system::info))
         .route("/system/resources", get(routes::system::resources))
+        .route("/system/reboot", post(routes::updates::reboot))
+        .route(
+            "/system/boot-environments",
+            get(routes::boot_environments::list).post(routes::boot_environments::create),
+        )
+        .route(
+            "/system/boot-environments/{name}",
+            get(routes::boot_environments::get_one).delete(routes::boot_environments::delete),
+        )
+        .route(
+            "/system/boot-environments/{name}/activate",
+            post(routes::boot_environments::activate),
+        )
+        .route("/system/updates", get(routes::updates::get))
+        .route("/system/updates/check", post(routes::updates::check))
+        .route("/system/updates/apply", post(routes::updates::apply))
         .route(
             "/users",
             get(routes::users::list).post(routes::users::create),

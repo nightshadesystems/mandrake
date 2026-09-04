@@ -125,8 +125,17 @@ Phase 1.
 
 The installer ramdisk also receives `build/installer/` (the answer-file
 verbs, the interactive screens, and `mandrake.env`), and the PXE tarball a
-sample answer file (ADR-0014). `just test-boot` arrives with the last
-Phase 6 commit: it needs the unattended install from this phase.
+sample answer file (ADR-0014).
+
+`just test-boot` proves the media end to end on the build host: it
+unpacks the PXE tarball, puts up a private etherstub with dnsmasq (DHCP
+and TFTP) and an HTTP server, writes an answer file with a static
+management address, PXE-boots a bhyve VM with a blank zvol, waits for
+`mandraked` on the installed system, and runs API smoke tests (health,
+login as the answer-file admin, hostname, the installer audit entry, the
+fingerprint on the console). It needs `ooce/network/dnsmasq` and the bhyve
+firmware package; `-n` prints the plan, `-k` keeps the VM for inspection,
+and the console transcript is in `/var/tmp/mandrake-test-boot/console.log`.
 
 ## Test host
 

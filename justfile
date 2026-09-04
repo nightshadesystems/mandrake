@@ -4,7 +4,6 @@
 # test, check-illumos, ci.
 # Build-host targets (OmniOS r151054): build-packages and publish-repo as the
 # build user; build-iso, build-usb, build-pxe, build-media, init-repo as root.
-# Placeholder until Phase 6: test-boot.
 
 set shell := ["bash", "-eu", "-o", "pipefail", "-c"]
 set windows-shell := ["bash", "-eu", "-o", "pipefail", "-c"]
@@ -149,12 +148,8 @@ build-packages *args:
 publish-repo *args:
     bash build/media/publish-repo.sh {{args}}
 
-# Boot the ISO under bhyve, wait for mandraked, run API smoke tests.
-# Needs the unattended installer (Phase 6): mandraked runs on the
-# installed system, not on the live media.
-test-boot: (not-yet "test-boot" "6")
+# Unattended PXE install of the media into a bhyve VM on the build host,
+# wait for mandraked, run API smoke tests: test-boot [-k] [-n] [-t SECONDS]
+test-boot *args:
+    bash build/media/test-boot.sh {{args}}
 
-[private]
-not-yet target phase:
-    @echo "just {{target}}: not implemented until Phase {{phase}}. See docs/build.md." >&2
-    @exit 1

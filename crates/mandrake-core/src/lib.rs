@@ -15,6 +15,7 @@ pub mod problem;
 pub mod role;
 pub mod shell;
 pub mod storage;
+pub mod system;
 pub mod timestamp;
 pub mod vm;
 pub mod zone;

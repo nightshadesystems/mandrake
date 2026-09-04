@@ -37,7 +37,21 @@ and `zones` (Phase 4); `vms` (Phase 5).
 | POST | `/auth/logout` | [End the current session](#logout) |
 | GET | `/auth/session` | [The current actor](#getsession) |
 | GET | `/system` | [Host identity](#getsystem) |
+| PATCH | `/system` | [Change host settings](#updatesystem) |
 | GET | `/system/resources` | [CPU, memory, and load](#getsystemresources) |
+| GET | `/system/settings` | [Host settings](#getsystemsettings) |
+| GET | `/system/tls` | [The console certificate](#getsystemtls) |
+| PUT | `/system/tls` | [Install a certificate](#putsystemtls) |
+| DELETE | `/system/tls` | [Back to a self-signed certificate](#resetsystemtls) |
+| POST | `/system/reboot` | [Reboot the host](#rebootsystem) |
+| GET | `/system/boot-environments` | [List boot environments](#listbootenvironments) |
+| POST | `/system/boot-environments` | [Create a boot environment](#createbootenvironment) |
+| GET | `/system/boot-environments/{name}` | [One boot environment](#getbootenvironment) |
+| DELETE | `/system/boot-environments/{name}` | [Destroy a boot environment](#deletebootenvironment) |
+| POST | `/system/boot-environments/{name}/activate` | [Activate a boot environment](#activatebootenvironment) |
+| GET | `/system/updates` | [Update state](#getupdates) |
+| POST | `/system/updates/check` | [Check for updates](#checkupdates) |
+| POST | `/system/updates/apply` | [Apply the planned update](#applyupdates) |
 | GET | `/users` | [List users](#listusers) |
 | POST | `/users` | [Create a user](#createuser) |
 | GET | `/users/{id}` | [Get a user](#getuser) |
@@ -216,6 +230,25 @@ Any role.
 | 401 | `Problem` | Error as RFC 7807 problem details |
 | default | `Problem` | Error as RFC 7807 problem details |
 
+### updateSystem
+
+`PATCH /system`: Change host settings.
+
+Role `admin`. Hostname (applied at once: `hostname`, `/etc/nodename`,
+`/etc/inet/hosts`, `svc:/system/identity:node`), timezone
+(`svc:/system/timezone`), and NTP servers (`/etc/inet/chrony.conf`
+and a restart of chrony). Absent fields are unchanged (ADR-0015).
+
+Request body: `SystemUpdate`
+
+| Status | Body | Description |
+|---|---|---|
+| 200 | `SystemInfo` | Host identity after the change |
+| 401 | `Problem` | Error as RFC 7807 problem details |
+| 403 | `Problem` | Error as RFC 7807 problem details |
+| 422 | `Problem` | Error as RFC 7807 problem details |
+| default | `Problem` | Error as RFC 7807 problem details |
+
 ### getSystemResources
 
 `GET /system/resources`: CPU, memory, and load.
@@ -226,6 +259,216 @@ Point-in-time figures for dashboard gauges. Any role.
 |---|---|---|
 | 200 | `SystemResources` | Resource figures |
 | 401 | `Problem` | Error as RFC 7807 problem details |
+| default | `Problem` | Error as RFC 7807 problem details |
+
+### getSystemSettings
+
+`GET /system/settings`: Host settings.
+
+Hostname, timezone, and NTP servers as configured. Any role.
+
+| Status | Body | Description |
+|---|---|---|
+| 200 | `SystemSettings` | Settings |
+| 401 | `Problem` | Error as RFC 7807 problem details |
+| default | `Problem` | Error as RFC 7807 problem details |
+
+### getSystemTls
+
+`GET /system/tls`: The console certificate.
+
+Subject, issuer, validity, fingerprint, and whether it is self-signed. Any role.
+
+| Status | Body | Description |
+|---|---|---|
+| 200 | `TlsInfo` | Certificate |
+| 401 | `Problem` | Error as RFC 7807 problem details |
+| default | `Problem` | Error as RFC 7807 problem details |
+
+### putSystemTls
+
+`PUT /system/tls`: Install a certificate.
+
+Role `admin`. A PEM certificate chain and its private key. Both are
+parsed, the key must match the leaf, the previous pair is kept as a
+backup, and the listener reloads in place (ADR-0015). Clients that
+pin the fingerprint must update it from the response.
+
+Request body: `TlsUpload`
+
+| Status | Body | Description |
+|---|---|---|
+| 200 | `TlsInfo` | Installed |
+| 401 | `Problem` | Error as RFC 7807 problem details |
+| 403 | `Problem` | Error as RFC 7807 problem details |
+| 422 | `Problem` | Error as RFC 7807 problem details |
+| default | `Problem` | Error as RFC 7807 problem details |
+
+### resetSystemTls
+
+`DELETE /system/tls`: Back to a self-signed certificate.
+
+Role `admin`. Generates a new self-signed pair and reloads the listener.
+
+| Status | Body | Description |
+|---|---|---|
+| 200 | `TlsInfo` | The new certificate |
+| 401 | `Problem` | Error as RFC 7807 problem details |
+| 403 | `Problem` | Error as RFC 7807 problem details |
+| default | `Problem` | Error as RFC 7807 problem details |
+
+### rebootSystem
+
+`POST /system/reboot`: Reboot the host.
+
+Role `admin`. Audited first; then `shutdown -y -g 0 -i 6` after a
+short grace so this response reaches the client. The job resource
+outlives nothing: the daemon stops with the host (ADR-0015).
+
+| Status | Body | Description |
+|---|---|---|
+| 202 | `Job` | Reboot scheduled |
+| 401 | `Problem` | Error as RFC 7807 problem details |
+| 403 | `Problem` | Error as RFC 7807 problem details |
+| 409 | `Problem` | Error as RFC 7807 problem details |
+| default | `Problem` | Error as RFC 7807 problem details |
+
+## boot-environments
+
+beadm boot environments (ADR-0015)
+
+### listBootEnvironments
+
+`GET /system/boot-environments`: List boot environments.
+
+From `beadm list -H`; the active and the booted BE are flagged. Any role.
+
+| Status | Body | Description |
+|---|---|---|
+| 200 | `BootEnvironmentList` | Boot environments |
+| 401 | `Problem` | Error as RFC 7807 problem details |
+| default | `Problem` | Error as RFC 7807 problem details |
+
+### createBootEnvironment
+
+`POST /system/boot-environments`: Create a boot environment.
+
+Role `admin`. A snapshot of the active BE under a new name (`beadm create`).
+
+Request body: `BootEnvironmentCreate`
+
+| Status | Body | Description |
+|---|---|---|
+| 201 | `BootEnvironment` | Created |
+| 401 | `Problem` | Error as RFC 7807 problem details |
+| 403 | `Problem` | Error as RFC 7807 problem details |
+| 409 | `Problem` | Error as RFC 7807 problem details |
+| 422 | `Problem` | Error as RFC 7807 problem details |
+| default | `Problem` | Error as RFC 7807 problem details |
+
+### getBootEnvironment
+
+`GET /system/boot-environments/{name}`: One boot environment.
+
+Any role.
+
+| Parameter | In | Type | Description |
+|---|---|---|---|
+| `name` (required) | path | string |  |
+
+| Status | Body | Description |
+|---|---|---|
+| 200 | `BootEnvironment` | Boot environment |
+| 401 | `Problem` | Error as RFC 7807 problem details |
+| 404 | `Problem` | Error as RFC 7807 problem details |
+| default | `Problem` | Error as RFC 7807 problem details |
+
+### deleteBootEnvironment
+
+`DELETE /system/boot-environments/{name}`: Destroy a boot environment.
+
+Role `admin`. Refused for the active or the booted BE (`beadm destroy -F`).
+
+| Parameter | In | Type | Description |
+|---|---|---|---|
+| `name` (required) | path | string |  |
+
+| Status | Body | Description |
+|---|---|---|
+| 204 |  | Destroyed |
+| 401 | `Problem` | Error as RFC 7807 problem details |
+| 403 | `Problem` | Error as RFC 7807 problem details |
+| 404 | `Problem` | Error as RFC 7807 problem details |
+| 409 | `Problem` | Error as RFC 7807 problem details |
+| default | `Problem` | Error as RFC 7807 problem details |
+
+### activateBootEnvironment
+
+`POST /system/boot-environments/{name}/activate`: Activate a boot environment.
+
+Role `admin`. `beadm activate`: the BE boots next. Rolling back an
+update is activating the previous BE and calling `/system/reboot`.
+
+| Parameter | In | Type | Description |
+|---|---|---|---|
+| `name` (required) | path | string |  |
+
+| Status | Body | Description |
+|---|---|---|
+| 200 | `BootEnvironment` | Activated |
+| 401 | `Problem` | Error as RFC 7807 problem details |
+| 403 | `Problem` | Error as RFC 7807 problem details |
+| 404 | `Problem` | Error as RFC 7807 problem details |
+| default | `Problem` | Error as RFC 7807 problem details |
+
+## updates
+
+pkg updates into a new boot environment (ADR-0015)
+
+### getUpdates
+
+`GET /system/updates`: Update state.
+
+The last check's plan and time, whether an apply is running or has
+completed, and the previously active BE for a rollback. Any role.
+
+| Status | Body | Description |
+|---|---|---|
+| 200 | `UpdateState` | Update state |
+| 401 | `Problem` | Error as RFC 7807 problem details |
+| default | `Problem` | Error as RFC 7807 problem details |
+
+### checkUpdates
+
+`POST /system/updates/check`: Check for updates.
+
+Role `admin`. A job: `pkg refresh --full`, then `pkg update -nv`
+parsed into a plan stored with the check time (ADR-0015).
+
+| Status | Body | Description |
+|---|---|---|
+| 202 | `Job` | Check started |
+| 401 | `Problem` | Error as RFC 7807 problem details |
+| 403 | `Problem` | Error as RFC 7807 problem details |
+| 409 | `Problem` | Error as RFC 7807 problem details |
+| default | `Problem` | Error as RFC 7807 problem details |
+
+### applyUpdates
+
+`POST /system/updates/apply`: Apply the planned update.
+
+Role `admin`. A job: `pkg update -v --be-name <name>` into a new
+boot environment, which pkg activates. Refused with 409 while
+another apply runs, and with 422 when there is no plan or it
+predates the last refresh. Nothing reboots; call `/system/reboot`.
+
+| Status | Body | Description |
+|---|---|---|
+| 202 | `Job` | Apply started |
+| 401 | `Problem` | Error as RFC 7807 problem details |
+| 403 | `Problem` | Error as RFC 7807 problem details |
+| 409 | `Problem` | Error as RFC 7807 problem details |
+| 422 | `Problem` | Error as RFC 7807 problem details |
 | default | `Problem` | Error as RFC 7807 problem details |
 
 ## users
@@ -2302,6 +2545,100 @@ Per-object metadata held in SQLite, not in illumos (ADR-0002)
 | `uptime_seconds` (required) | integer |  |
 | `time` (required) | `Timestamp` |  |
 | `timezone` | string |  |
+
+### SystemSettings
+
+| Field | Type | Description |
+|---|---|---|
+| `hostname` (required) | string |  |
+| `timezone` | string |  |
+| `ntp_servers` (required) | array of string | The `server` lines of chrony.conf |
+
+### SystemUpdate
+
+Absent fields are unchanged.
+
+| Field | Type | Description |
+|---|---|---|
+| `hostname` | string |  |
+| `timezone` | string | A zoneinfo name such as `UTC` or `Europe/Berlin` |
+| `ntp_servers` | array of string | Replaces the list; empty disables NTP |
+
+### TlsInfo
+
+| Field | Type | Description |
+|---|---|---|
+| `subject` (required) | string |  |
+| `issuer` (required) | string |  |
+| `not_before` (required) | `Timestamp` |  |
+| `not_after` (required) | `Timestamp` |  |
+| `fingerprint` (required) | string | SHA-256 of the leaf certificate, `AA:BB:...` |
+| `self_signed` (required) | boolean | Generated by the daemon rather than uploaded |
+
+### TlsUpload
+
+| Field | Type | Description |
+|---|---|---|
+| `certificate_pem` (required) | string | The leaf first, then any intermediates |
+| `key_pem` (required) | string | PKCS#8 or traditional RSA/EC key; must match the leaf |
+
+### BootEnvironment
+
+| Field | Type | Description |
+|---|---|---|
+| `id` (required) | `Id` |  |
+| `name` (required) | string |  |
+| `active` (required) | boolean | Boots next (`beadm` flag R) |
+| `booted` (required) | boolean | The running BE (`beadm` flag N) |
+| `mountpoint` | string |  |
+| `space_bytes` (required) | integer (int64) |  |
+| `policy` | string |  |
+| `created_at` (required) | `Timestamp` |  |
+
+### BootEnvironmentList
+
+| Field | Type | Description |
+|---|---|---|
+| `items` (required) | array of `BootEnvironment` |  |
+
+### BootEnvironmentCreate
+
+| Field | Type | Description |
+|---|---|---|
+| `name` (required) | string |  |
+
+### UpdatePackage
+
+| Field | Type | Description |
+|---|---|---|
+| `name` (required) | string | Package FMRI stem, for example `system/mandrake/daemon` |
+| `action` (required) | `install` \| `update` \| `remove` |  |
+| `old_version` | string |  |
+| `new_version` | string |  |
+
+### UpdatePlan
+
+| Field | Type | Description |
+|---|---|---|
+| `packages` (required) | array of `UpdatePackage` |  |
+| `reboot_required` (required) | boolean |  |
+| `boot_environment` (required) | string | Name the apply will give the new BE (ADR-0015) |
+| `mandrake_version` | string | The Mandrake version the plan moves to, when it changes it |
+| `checked_at` (required) | `Timestamp` |  |
+| `raw` | string | The `pkg update -nv` text, kept when the parser could not read it |
+
+### UpdateState
+
+| Field | Type | Description |
+|---|---|---|
+| `plan` | `UpdatePlan` |  |
+| `checking` (required) | boolean |  |
+| `applying` (required) | boolean |  |
+| `check_job` | `Id` |  |
+| `apply_job` | `Id` |  |
+| `applied_at` | `Timestamp` |  |
+| `applied_boot_environment` | string | The BE the last apply created; boots next until a reboot |
+| `previous_boot_environment` | string | The BE that was active before the last apply; the rollback target |
 
 ### SystemResources
 

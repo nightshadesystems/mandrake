@@ -51,6 +51,10 @@ tags:
     description: Console login, logout, and the current session
   - name: system
     description: Host identity, time, resources, boot environments
+  - name: boot-environments
+    description: beadm boot environments (ADR-0015)
+  - name: updates
+    description: pkg updates into a new boot environment (ADR-0015)
   - name: users
     description: Local users and roles
   - name: tokens
@@ -176,6 +180,36 @@ paths:
           $ref: "#/components/responses/Problem"
         default:
           $ref: "#/components/responses/Problem"
+    patch:
+      tags: [system]
+      operationId: updateSystem
+      summary: Change host settings
+      description: |
+        Role `admin`. Hostname (applied at once: `hostname`, `/etc/nodename`,
+        `/etc/inet/hosts`, `svc:/system/identity:node`), timezone
+        (`svc:/system/timezone`), and NTP servers (`/etc/inet/chrony.conf`
+        and a restart of chrony). Absent fields are unchanged (ADR-0015).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SystemUpdate"
+      responses:
+        "200":
+          description: Host identity after the change
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemInfo"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "422":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
 
   /system/resources:
     get:
@@ -194,6 +228,300 @@ paths:
           $ref: "#/components/responses/Problem"
         default:
           $ref: "#/components/responses/Problem"
+
+  /system/settings:
+    get:
+      tags: [system]
+      operationId: getSystemSettings
+      summary: Host settings
+      description: Hostname, timezone, and NTP servers as configured. Any role.
+      responses:
+        "200":
+          description: Settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemSettings"
+        "401":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /system/tls:
+    get:
+      tags: [system]
+      operationId: getSystemTls
+      summary: The console certificate
+      description: Subject, issuer, validity, fingerprint, and whether it is self-signed. Any role.
+      responses:
+        "200":
+          description: Certificate
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TlsInfo"
+        "401":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+    put:
+      tags: [system]
+      operationId: putSystemTls
+      summary: Install a certificate
+      description: |
+        Role `admin`. A PEM certificate chain and its private key. Both are
+        parsed, the key must match the leaf, the previous pair is kept as a
+        backup, and the listener reloads in place (ADR-0015). Clients that
+        pin the fingerprint must update it from the response.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TlsUpload"
+      responses:
+        "200":
+          description: Installed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TlsInfo"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "422":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      tags: [system]
+      operationId: resetSystemTls
+      summary: Back to a self-signed certificate
+      description: Role `admin`. Generates a new self-signed pair and reloads the listener.
+      responses:
+        "200":
+          description: The new certificate
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TlsInfo"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /system/reboot:
+    post:
+      tags: [system]
+      operationId: rebootSystem
+      summary: Reboot the host
+      description: |
+        Role `admin`. Audited first; then `shutdown -y -g 0 -i 6` after a
+        short grace so this response reaches the client. The job resource
+        outlives nothing: the daemon stops with the host (ADR-0015).
+      responses:
+        "202":
+          description: Reboot scheduled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /system/boot-environments:
+    get:
+      tags: [boot-environments]
+      operationId: listBootEnvironments
+      summary: List boot environments
+      description: From `beadm list -H`; the active and the booted BE are flagged. Any role.
+      responses:
+        "200":
+          description: Boot environments
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BootEnvironmentList"
+        "401":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+    post:
+      tags: [boot-environments]
+      operationId: createBootEnvironment
+      summary: Create a boot environment
+      description: Role `admin`. A snapshot of the active BE under a new name (`beadm create`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BootEnvironmentCreate"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BootEnvironment"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+        "422":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /system/boot-environments/{name}:
+    parameters:
+      - $ref: "#/components/parameters/BootEnvironmentName"
+    get:
+      tags: [boot-environments]
+      operationId: getBootEnvironment
+      summary: One boot environment
+      description: Any role.
+      responses:
+        "200":
+          description: Boot environment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BootEnvironment"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      tags: [boot-environments]
+      operationId: deleteBootEnvironment
+      summary: Destroy a boot environment
+      description: Role `admin`. Refused for the active or the booted BE (`beadm destroy -F`).
+      responses:
+        "204":
+          description: Destroyed
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /system/boot-environments/{name}/activate:
+    parameters:
+      - $ref: "#/components/parameters/BootEnvironmentName"
+    post:
+      tags: [boot-environments]
+      operationId: activateBootEnvironment
+      summary: Activate a boot environment
+      description: |
+        Role `admin`. `beadm activate`: the BE boots next. Rolling back an
+        update is activating the previous BE and calling `/system/reboot`.
+      responses:
+        "200":
+          description: Activated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BootEnvironment"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /system/updates:
+    get:
+      tags: [updates]
+      operationId: getUpdates
+      summary: Update state
+      description: |
+        The last check's plan and time, whether an apply is running or has
+        completed, and the previously active BE for a rollback. Any role.
+      responses:
+        "200":
+          description: Update state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpdateState"
+        "401":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /system/updates/check:
+    post:
+      tags: [updates]
+      operationId: checkUpdates
+      summary: Check for updates
+      description: |
+        Role `admin`. A job: `pkg refresh --full`, then `pkg update -nv`
+        parsed into a plan stored with the check time (ADR-0015).
+      responses:
+        "202":
+          description: Check started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /system/updates/apply:
+    post:
+      tags: [updates]
+      operationId: applyUpdates
+      summary: Apply the planned update
+      description: |
+        Role `admin`. A job: `pkg update -v --be-name <name>` into a new
+        boot environment, which pkg activates. Refused with 409 while
+        another apply runs, and with 422 when there is no plan or it
+        predates the last refresh. Nothing reboots; call `/system/reboot`.
+      responses:
+        "202":
+          description: Apply started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+        "422":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
 
   /users:
     get:
@@ -2663,6 +2991,13 @@ components:
       required: true
       schema:
         $ref: "#/components/schemas/Id"
+    BootEnvironmentName:
+      name: name
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,62}$"
     IdempotencyKey:
       name: Idempotency-Key
       in: header
@@ -3122,6 +3457,168 @@ components:
         timezone:
           type: string
           examples: [UTC]
+
+    SystemSettings:
+      type: object
+      required: [hostname, ntp_servers]
+      properties:
+        hostname:
+          type: string
+        timezone:
+          type: string
+          examples: [UTC]
+        ntp_servers:
+          type: array
+          items:
+            type: string
+          description: The `server` lines of chrony.conf
+
+    SystemUpdate:
+      type: object
+      description: Absent fields are unchanged.
+      properties:
+        hostname:
+          type: string
+          pattern: "^[A-Za-z0-9][A-Za-z0-9-]{0,62}$"
+        timezone:
+          type: string
+          description: A zoneinfo name such as `UTC` or `Europe/Berlin`
+        ntp_servers:
+          type: array
+          items:
+            type: string
+          description: Replaces the list; empty disables NTP
+
+    TlsInfo:
+      type: object
+      required: [subject, issuer, not_before, not_after, fingerprint, self_signed]
+      properties:
+        subject:
+          type: string
+        issuer:
+          type: string
+        not_before:
+          $ref: "#/components/schemas/Timestamp"
+        not_after:
+          $ref: "#/components/schemas/Timestamp"
+        fingerprint:
+          type: string
+          description: SHA-256 of the leaf certificate, `AA:BB:...`
+        self_signed:
+          type: boolean
+          description: Generated by the daemon rather than uploaded
+
+    TlsUpload:
+      type: object
+      required: [certificate_pem, key_pem]
+      properties:
+        certificate_pem:
+          type: string
+          description: The leaf first, then any intermediates
+        key_pem:
+          type: string
+          description: PKCS#8 or traditional RSA/EC key; must match the leaf
+
+    BootEnvironment:
+      type: object
+      required: [id, name, active, booted, space_bytes, created_at]
+      properties:
+        id:
+          $ref: "#/components/schemas/Id"
+        name:
+          type: string
+        active:
+          type: boolean
+          description: Boots next (`beadm` flag R)
+        booted:
+          type: boolean
+          description: The running BE (`beadm` flag N)
+        mountpoint:
+          type: string
+        space_bytes:
+          type: integer
+          format: int64
+        policy:
+          type: string
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+
+    BootEnvironmentList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/BootEnvironment"
+
+    BootEnvironmentCreate:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          pattern: "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,62}$"
+
+    UpdatePackage:
+      type: object
+      required: [name, action]
+      properties:
+        name:
+          type: string
+          description: Package FMRI stem, for example `system/mandrake/daemon`
+        action:
+          type: string
+          enum: [install, update, remove]
+        old_version:
+          type: string
+        new_version:
+          type: string
+
+    UpdatePlan:
+      type: object
+      required: [packages, reboot_required, boot_environment, checked_at]
+      properties:
+        packages:
+          type: array
+          items:
+            $ref: "#/components/schemas/UpdatePackage"
+        reboot_required:
+          type: boolean
+        boot_environment:
+          type: string
+          description: Name the apply will give the new BE (ADR-0015)
+        mandrake_version:
+          type: string
+          description: The Mandrake version the plan moves to, when it changes it
+        checked_at:
+          $ref: "#/components/schemas/Timestamp"
+        raw:
+          type: string
+          description: The `pkg update -nv` text, kept when the parser could not read it
+
+    UpdateState:
+      type: object
+      required: [checking, applying]
+      properties:
+        plan:
+          $ref: "#/components/schemas/UpdatePlan"
+        checking:
+          type: boolean
+        applying:
+          type: boolean
+        check_job:
+          $ref: "#/components/schemas/Id"
+        apply_job:
+          $ref: "#/components/schemas/Id"
+        applied_at:
+          $ref: "#/components/schemas/Timestamp"
+        applied_boot_environment:
+          type: string
+          description: The BE the last apply created; boots next until a reboot
+        previous_boot_environment:
+          type: string
+          description: The BE that was active before the last apply; the rollback target
 
     SystemResources:
       type: object

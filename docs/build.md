@@ -123,9 +123,10 @@ installs the packages into the installed-system image and the verification
 step checks they landed; if not, the media are built branded-only as in
 Phase 1.
 
-Still a placeholder until Phase 6: `just test-boot`, because `mandraked`
-runs on the installed system and unattended installs need the kayak answer
-file from that phase.
+The installer ramdisk also receives `build/installer/` (the answer-file
+verbs, the interactive screens, and `mandrake.env`), and the PXE tarball a
+sample answer file (ADR-0014). `just test-boot` arrives with the last
+Phase 6 commit: it needs the unattended install from this phase.
 
 ## Test host
 
@@ -330,6 +331,73 @@ and exercising zones and VMs. Each phase ends with a demo here (spec §13).
    A VM from an image instead: `mandrakectl vms create web --image <vm-raw
    image id>`. The consoles are browser-only; on the host,
    `pfexec zlogin -C <name>` reaches the serial console.
+
+### Phase 6 demo
+
+1. The fork branch must carry `build/patches/kayak/0006` (`git log` in
+   `build/kayak` shows "Mandrake installer configuration and branding");
+   `build-media.sh` refuses to build without it. Then, as root on the
+   build host:
+
+   ```sh
+   just build-packages
+   just build-pxe            # build/out/mandrake-<ver>-r151054-pxe.tar.gz
+   just build-iso            # for the interactive path
+   ```
+
+   The build verifies that the installer ramdisk carries
+   `/kayak/lib/mandrake.sh`, `/kayak/installer/mandrake-config`, and the
+   patched `install_help.sh`, and that the image's SMF bundle has the
+   banner service.
+2. Unpack the PXE tarball on the install server. Serve `tftpboot/` over
+   TFTP and `http/` over HTTP on the DHCP next-server; set the DHCP
+   bootfile to `pxeboot`. Copy `http/kayak/000000000000.sample` to
+   `http/kayak/<MAC>` (twelve upper-case hex digits) and edit it:
+
+   ```sh
+   BuildRpool c0t0d0
+   SetHostname lab-01
+   SetTimezone UTC
+   UseDNS 9.9.9.9 lab.example
+   MandrakeAdmin admin 'a real passphrase'
+   MandrakeSshKey 'ssh-ed25519 AAAA... you@workstation'
+   MandrakeMgmt e1000g0 dhcp
+   ```
+
+3. PXE-boot a blank box with a serial console. The loader shows the
+   Mandrake banner; the installer fetches the answer file, builds the
+   pool, receives the image, applies the answers, and reboots without a
+   prompt. An answer file missing `MandrakeAdmin` or `MandrakeMgmt` stops
+   before the pool is created and says which verb is missing.
+4. On the first boot the serial console prints, after the services come
+   up:
+
+   ```
+   Mandrake console: https://lab-01/
+   TLS certificate SHA-256 fingerprint: AA:BB:...
+   ```
+
+   `svcs -a | grep mandrake` shows `setup`, `mandraked`, and `banner`
+   online; `cat /etc/motd` ends with the same two lines between the
+   Mandrake markers; `beadm list` shows `mandrake-<ver>` active;
+   `dladm show-vnic` shows `mgmt0` over the chosen link and
+   `ipadm show-addr` its address; `ls /etc/mandrake` has no
+   `firstboot.json` any more.
+5. From a workstation, open the console URL, accept the fingerprint, and
+   sign in as the admin from the answer file. System → Audit log shows
+   `user.create` for that user with actor `installer`. `ssh admin@lab-01`
+   works with the key and refuses passwords; `ssh root@lab-01` is
+   refused. From another host, `nmap` shows only 22 and 443 open.
+6. The interactive path: boot the ISO, choose the default install, pick
+   disks, accept the hostname and timezone prompts, then take the default
+   "Configure Mandrake" item. It asks for the admin, an optional SSH key,
+   the management NIC, DHCP or a static address, and DNS, shows a summary,
+   and applies. Reboot; the same checks as steps 4 and 5 hold.
+
+A host installed by hand onto a preconfigured rpool (the second menu
+item) skips the Mandrake screens. It comes up with no management VNIC
+and no admin; recover with `dladm create-vnic`, `ipadm create-addr`, and
+`pfexec mandrakectl users create` over the root socket.
 
 ## Test conventions
 

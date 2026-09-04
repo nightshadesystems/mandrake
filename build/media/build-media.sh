@@ -89,6 +89,9 @@ check_host() {
     grep -q apply_custom_overlay "$kayak/lib/utils.sh" \
         || die "kayak checkout lacks overlay support;" \
                "the submodule must point at the fork's mandrake/$OMNIOS_RELEASE branch"
+    grep -q MandrakeApply "$kayak/lib/install_help.sh" \
+        || die "kayak checkout lacks the Mandrake installer hooks (build/patches/kayak/0006);" \
+               "the submodule must point at the fork's mandrake/$OMNIOS_RELEASE branch"
     for t in gmake pv xz pkg zfs lofiadm mkisofs digest; do
         command -v "$t" >/dev/null || die "missing tool: $t"
     done
@@ -108,7 +111,7 @@ stage_overlays() {
     rm -rf "$STAGE_DIR/zfs" "$STAGE_DIR/miniroot"
     local zfs=$STAGE_DIR/zfs mini=$STAGE_DIR/miniroot
     mkdir -p "$zfs/etc" "$zfs/boot/forth" "$zfs/boot/conf.d" "$zfs/.overlay-hooks" \
-             "$mini/boot/forth" "$mini/boot/conf.d"
+             "$mini/boot/forth" "$mini/boot/conf.d" "$mini/kayak"
 
     # Installed system: overlay/ verbatim, then branding, then hooks.
     copy_tree "$repo/overlay" "$zfs"
@@ -125,7 +128,15 @@ stage_overlays() {
         echo "Mandrake packages: none found at $MANDRAKE_BUILD_REPO; building branded media only"
     fi
 
-    # Installer ramdisk (and so the ISO root): loader branding only, with
+    # Installer ramdisk: the Mandrake installer pieces under /kayak (ADR-0014).
+    mkdir -p "$mini/kayak/lib" "$mini/kayak/installer" "$mini/kayak/etc"
+    cp -p "$repo/build/installer/lib/mandrake.sh" "$mini/kayak/lib/mandrake.sh"
+    cp -p "$repo/build/installer/mandrake-config" "$mini/kayak/installer/mandrake-config"
+    cp -p "$here/mandrake.env" "$mini/kayak/etc/mandrake.env"
+    chmod 0755 "$mini/kayak/lib/mandrake.sh" "$mini/kayak/installer/mandrake-config"
+    chmod 0644 "$mini/kayak/etc/mandrake.env"
+
+    # Then loader branding (also the ISO root), with
     # the install-media menu title.
     cp -p "$repo"/branding/loader/*.4th "$mini/boot/forth/"
     sed "s/^loader_menu_title=.*/loader_menu_title=\"$LOADER_MENU_TITLE\"/" \
@@ -187,10 +198,31 @@ verify_zfs() {
         pkg -R "$root" list -H system/mandrake/daemon system/mandrake/cli >/dev/null \
             || die "Mandrake packages are not installed in the image; see the hook output above"
         [ -f "$root/lib/svc/manifest/system/mandrake/mandraked.xml" ] || die "SMF manifest missing"
+        grep -q 'system/mandrake/banner' "$root/lib/svc/manifest/system/mandrake/mandraked.xml" \n            || die "SMF manifest lacks the banner service (ADR-0014)"
+        grep -q '^banner)' "$root/lib/svc/method/svc-mandraked" \n            || die "method script lacks the banner verb"
         echo "Mandrake packages installed:"
         pkg -R "$root" list -H system/mandrake/daemon system/mandrake/cli
     fi
     pkg -R "$root" publisher
+}
+
+verify_miniroot() {
+    local gz=$BUILDSEND_MP/miniroot.gz ufs=$STAGE_DIR/miniroot.ufs mnt=$STAGE_DIR/miniroot.mnt dev ok=1
+    log "verifying installer ramdisk $gz"
+    [ -f "$gz" ] || die "miniroot.gz not found"
+    gzip -dc "$gz" > "$ufs"
+    dev=$(lofiadm -a "$ufs")
+    mkdir -p "$mnt"
+    mount -F ufs -o ro "$dev" "$mnt"
+    [ -f "$mnt/kayak/lib/mandrake.sh" ] || ok=0
+    [ -x "$mnt/kayak/installer/mandrake-config" ] || ok=0
+    [ -f "$mnt/kayak/etc/mandrake.env" ] || ok=0
+    grep -q MandrakeApply "$mnt/kayak/lib/install_help.sh" || ok=0
+    umount "$mnt"
+    lofiadm -d "$dev"
+    rm -f "$ufs"
+    ((ok)) || die "the installer ramdisk lacks the Mandrake installer files; the miniroot overlay did not apply"
+    echo "installer ramdisk carries the Mandrake installer"
 }
 
 verify_iso() {
@@ -227,15 +259,25 @@ build_pxe() {
     } >> "$pxe/tftpboot/boot/loader.conf.local"
     # loader.conf.local boot-args fetch the stream from http://<next-server>/kayak/
     cp -p "$BUILDSEND_MP/kayak_$VERSION.zfs.xz" "$pxe/http/kayak/omnios-$VERSION.zfs.xz"
+    cp -p "$repo/build/installer/answer.sample" "$pxe/http/kayak/000000000000.sample"
     cat > "$pxe/README" <<EOT
 Mandrake $MANDRAKE_VERSION PXE install set (OmniOS $OMNIOS_RELEASE)
 
 tftpboot/   serve over TFTP; the DHCP bootfile is pxeboot
-http/       serve over HTTP at the DHCP next-server, or edit boot-args in
-            tftpboot/boot/loader.conf.local to name the server
+http/       serve over HTTP at the DHCP next-server (the loader fetches
+            http://<next-server>/kayak/...), or name the server in
+            boot-args in tftpboot/boot/loader.conf.local
 
-Unattended installs need a kayak answer file under http/kayak/, named by the
-target's MAC address; that arrives in Phase 6. See docs/build.md.
+Unattended installs (ADR-0014): copy http/kayak/000000000000.sample to
+http/kayak/<MAC> with the target's MAC address as twelve upper-case hex
+digits and no separators, then edit it: disks, hostname, DNS,
+MandrakeAdmin, MandrakeMgmt, MandrakeSshKey. The installer fetches it,
+refuses it before touching a disk when MandrakeAdmin or MandrakeMgmt is
+missing, installs, and reboots. The console URL and certificate
+fingerprint appear on the serial console after the first boot.
+
+DHCP: next-server = the TFTP/HTTP host, filename = pxeboot.
+See docs/build.md, Phase 6 demo.
 EOT
     tar -cf - -C "$STAGE_DIR/pxe" "$stem-pxe" | gzip -9 > "$out_dir/$stem-pxe.tar.gz"
 }
@@ -271,6 +313,7 @@ if ((dry_run)); then
     exit 0
 fi
 ((want_zfs)) && verify_zfs
+((want_miniroot)) && verify_miniroot
 ((want_iso)) && verify_iso
 collect
 log "done"

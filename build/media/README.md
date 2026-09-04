@@ -9,6 +9,7 @@ branding and the `nightshade.systems` publisher, built with kayak.
 | `build-media.sh` | Stages overlays, drives kayak, verifies, collects into `build/out/` |
 | `init-repo.sh` | Creates the empty `nightshade.systems` file repository; can serve it |
 | `hooks/` | kayak post-overlay hooks run inside the installed-system image |
+| `../installer/` | Answer-file verbs, interactive screens, sample answer file; staged into the ramdisk (ADR-0014) |
 
 How the pieces reach the image (ADR-0005):
 
